@@ -1,0 +1,6 @@
+*
+!.gitignore
+!Makefile
+!*.asm
+!*.c
+!har.ld
