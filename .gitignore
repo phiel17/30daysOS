@@ -4,5 +4,6 @@
 !Makefile
 !*.asm
 !*.c
+!*.h
 !har.ld
 !hankaku.txt
