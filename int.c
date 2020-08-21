@@ -1,9 +1,5 @@
 #include "bootpack.h"
 
-#define PORT_KEYDAT		(0x0060)
-
-struct FIFO8 keyfifo, mousefifo;
-
 void init_pic(void) {
 	// interrupt mask register
 	io_out8(PIC0_IMR, 0xff);	// no interrupt
@@ -22,22 +18,6 @@ void init_pic(void) {
 
 	io_out8(PIC0_IMR, 0xfb);	// disable except PIC1
 	io_out8(PIC1_IMR, 0xff);
-}
-
-void inthandler21(int *esp) {	// PS/2 keyboard
-	struct BOOTINFO *binfo = (struct BOOTINFO *) ADDR_BOOTINFO;
-	io_out8(PIC0_OCW2, 0x61);	// notify irq-01 is ready to PIC
-	unsigned char data = io_in8(PORT_KEYDAT);
-	fifo8_put(&keyfifo, data);
-	return;
-}
-
-void inthandler2c(int *esp) {
-	io_out8(PIC1_OCW2, 0x64);	// notify irq-12 is ready to PIC
-	io_out8(PIC0_OCW2, 0x62);	// notify irq-02 is ready to PIC
-	unsigned char data = io_in8(PORT_KEYDAT);
-	fifo8_put(&mousefifo, data);
-	return;
 }
 
 void inthandler27(int *esp) {

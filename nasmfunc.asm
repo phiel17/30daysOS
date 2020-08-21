@@ -2,8 +2,10 @@ GLOBAL	io_hlt, io_cli, io_sti, io_stihlt
 GLOBAL	io_in8, io_in16, io_in32
 GLOBAL	io_out8, io_out16, io_out32
 GLOBAL	io_load_eflags, io_store_eflags
+GLOBAL	load_cr0, store_cr0
 GLOBAL	load_gdtr, load_idtr
 GLOBAL	asm_inthandler21, asm_inthandler27, asm_inthandler2c
+GLOBAL	memtest_sub
 
 EXTERN	inthandler21, inthandler27, inthandler2c
 
@@ -70,6 +72,15 @@ io_store_eflags:
 	POPFD
 	RET
 
+load_cr0:
+	MOV		EAX, CR0
+	RET
+
+store_cr0:
+	MOV		EAX, [ESP + 4]
+	MOV		CR0, EAX
+	RET
+
 load_gdtr:
 	MOV		AX, [ESP + 4]
 	MOV		[ESP + 6], AX
@@ -129,3 +140,38 @@ asm_inthandler2c:
 	POP		DS
 	POP		ES
 	IRETD
+
+memtest_sub:
+	PUSH	EDI
+	PUSH	ESI
+	PUSH	EBX
+	MOV		ESI, 0xdeadbeef
+	MOV		EDI, 0x21524110
+	MOV		EAX, [ESP + 12 + 4];
+
+	mts_loop:
+	MOV		EBX, EAX
+	ADD		EBX, 0xffc
+	MOV		EDX, [EBX]
+	MOV		[EBX], ESI
+	XOR		DWORD [EBX], 0xffffffff
+	CMP		EDI, [EBX]
+	JNE		mts_fin
+	XOR		DWORD [EBX], 0xffffffff
+	CMP		ESI, [EBX]
+	JNE		mts_fin
+	MOV		[EBX], EDX
+	ADD		EAX, 0x1000
+	CMP		EAX, [ESP + 12 + 8]
+	JBE		mts_loop
+	POP		EBX
+	POP		ESI
+	POP		EDI
+	RET
+
+	mts_fin:
+	MOV		[EBX], EDX
+	POP		EBX
+	POP		ESI
+	POP		EDI
+	RET
