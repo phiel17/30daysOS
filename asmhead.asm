@@ -27,21 +27,21 @@ VRAM	EQU	0x0ff8
 	INT		0x16
 	MOV		[LEDS], AL
 
-	; disable PIC interrupt
+	; disable PIC interrupt to initialize PIC
 	MOV		AL, 0xff
 	OUT		0x21, AL
 	NOP
 	OUT		0xa1, AL
-	CLI
+	CLI					; disable PIC in CPU
 
 	; enable CPU to access over 1MB memory
 	CALL	waitkbdout
 	MOV		AL, 0xd1
 	OUT		0x64, AL
 	CALL	waitkbdout
-	MOV		AL, 0xdf	; enable A20
+	MOV		AL, 0xdf	; enable A20 to use over 1MB
 	OUT		0x60, AL
-	CALL	waitkbdout
+	CALL	waitkbdout	; ensure the precess is completed
 
 ; protect mode
 ; [INSTRSET "i486p"]
@@ -49,11 +49,11 @@ VRAM	EQU	0x0ff8
 	MOV		EAX, CR0
 	AND		EAX, 0x7fffffff
 	OR		EAX, 0x00000001
-	MOV		CR0, EAX
-	JMP		pipelineflush
+	MOV		CR0, EAX			; set control register 0 to set protect mode without paging
+	JMP		pipelineflush		; reflesh CPU pipeline
 
 pipelineflush:
-	MOV		AX, 1*8
+	MOV		AX, 1*8				; reset segment registers
 	MOV		DS, AX
 	MOV		ES, AX
 	MOV		FS, AX
@@ -66,12 +66,13 @@ pipelineflush:
 	MOV		ECX, 512*1024/4
 	CALL	memcpy
 
-; transfer discdata
+	; transfer bootsector
 	MOV		ESI, 0x7c00
 	MOV		EDI, DSKCAC
 	MOV		ECX, 512/4
 	CALL	memcpy
 
+	; others
 	MOV		ESI, DSKCAC0 + 512
 	MOV		EDI, DSKCAC + 512
 	MOV		ECX, 0
@@ -112,9 +113,9 @@ memcpy:
 
 	ALIGNB	16
 GDT0:
-	RESB	8
-	DW		0xffff, 0x0000, 0x9200, 0x00cf
-	DW		0xffff, 0x0000, 0x9a28, 0x0047
+	RESB	8								; null selector
+	DW		0xffff, 0x0000, 0x9200, 0x00cf	; read-write segment
+	DW		0xffff, 0x0000, 0x9a28, 0x0047	; executable segment (bootpack)
 	DW		0
 
 GDTR0:
