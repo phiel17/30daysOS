@@ -1,7 +1,7 @@
 # 30daysOS
 
 ```
-$ sudo apt install gcc nasm qemu-system-x86
+$ sudo apt install gcc nasm qemu-system-x86 qemu-kvm libvirt-bin
 ```
 
 Ubuntu 18.04/20.04のQEMU上で動作することを確認している。
@@ -17,3 +17,9 @@ Ubuntu 18.04/20.04のQEMU上で動作することを確認している。
   - `-O2`でコンパイルすると本の通り
   - QEMUの初期設定が128MBになっていることに注意([リンク](https://wiki.gentoo.org/wiki/QEMU/Options#RAM))
     - `-m 32`をつけてやることで32MBにできる
+
+## 13日目
+
+- for文の直下を`count++`のみにすると動作しなくなった
+  - [このブログ](https://wisteria0410ss.hatenablog.com/entry/2019/02/10/222931)を参考に`-enable-kvm`をパラメータに追加
+  - permission deniedが出たので、[ここ](https://canal.idletime.be/qemu/ubuntu.html)を参考に`$ gpasswd -a (user) kvm`

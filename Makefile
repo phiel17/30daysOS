@@ -29,7 +29,7 @@ bootpack.hrb: $(OBJS) nasmfunc.o har.ld
 	$(CC) $(CFLAGS) -T har.ld $(OBJS) nasmfunc.o -o $@
 
 run: $(TARGET)
-	qemu-system-i386 -fda $< -m 32
+	qemu-system-i386 -fda $< -m 32 -enable-kvm
 
 .PHONY: clean
 clean:
