@@ -1,7 +1,7 @@
 .PHONY: all
 
 CC		= gcc
-CFLAGS	= -march=i486 -m32 -nostdlib -fno-pie -no-pie -g
+CFLAGS	= -march=i486 -m32 -nostdlib -fno-builtin -fno-pie -no-pie -g
 
 TARGET	= haribote.img
 SRCS	= $(wildcard *.c)

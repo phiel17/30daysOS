@@ -1,6 +1,8 @@
 // mysprintf.c
 // http://bttb.s1.valueserver.jp/wordpress/blog/2017/12/17/makeos-5-2/
 
+#pragma GCC diagnostic ignored "-Wvarargs"
+
 #include <stdarg.h>
 
 //10進数からASCIIコードに変換
@@ -39,7 +41,8 @@ int hex2asc (char *str, int dec) { //10で割れた回数（つまり桁数）�
 void sprintf (char *str, char *fmt, ...) {
 	va_list list;
 	int i, len;
-	va_start (list, 2);
+	int size = 2;
+	va_start (list, size);
 
 	while (*fmt) {
 		if(*fmt=='%') {
