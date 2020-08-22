@@ -1,27 +1,68 @@
 ORG	0xc200
 
-BOTPAK	EQU	0x00280000
-DSKCAC	EQU	0x00100000
-DSKCAC0	EQU	0x00008000
+VBEMODE	EQU	0x105
+; 0x101: 640 x 480 x 8bit
+; 0x103: 800 x 600 x 8bit
+; 0x105: 1024 x 768 x 8bit
+; 0x107: 1280 x 1024 x 8bit
+
+BOTPAK	EQU	0x00280000		; bootpack load addr
+DSKCAC	EQU	0x00100000		; disc cache addr
+DSKCAC0	EQU	0x00008000		; disc cache addr (real mode)
 
 ; BOOT_INFO
-CYLS	EQU	0x0ff0
+CYLS	EQU	0x0ff0			; set by bootsector
 LEDS	EQU	0x0ff1
-VMODE	EQU	0x0ff2
-SCRNX	EQU	0x0ff4
-SCRNY	EQU	0x0ff6
-VRAM	EQU	0x0ff8
+VMODE	EQU	0x0ff2			; bit color
+SCRNX	EQU	0x0ff4			; resolution x
+SCRNY	EQU	0x0ff6			; resolution y
+VRAM	EQU	0x0ff8			; graphic buffer addr
+
+	; confirm VESA BIOS Extention(VBE)
+	MOV		AX, 0x9000
+	MOV		ES, AX
+	MOV		DI, 0
+	MOV		AX, 0x4f00
+	INT		0x10
+	CMP		AX, 0x004f		; if VBE exists AX will be 0x004f
+	JNE		scrn320
+
+	; check VBE version
+	MOV		AX, [ES:DI+4]
+	CMP		AX, 0x0200
+	JB		scrn320
+
+	; get graphic mode info
+	MOV		CX, VBEMODE
+	MOV		AX, 0x4f01
+	INT		0x10
+	CMP		AX, 0x004f
+	JNE		scrn320
 
 	; change graphic mode
-	MOV		AL, 0x13
-	MOV		AH, 0x00
+	MOV		BX, VBEMODE + 0x4000	; 640x480x8bit color ; 0x4000 + mode
+	MOV		AX, 0x4f02				; use VBE
 	INT		0x10
 
 	MOV		BYTE [VMODE], 8
-	MOV		WORD [SCRNX], 320
-	MOV		WORD [SCRNY], 200
+	MOV		AX, [ES:DI+0x12]
+	MOV		WORD [SCRNX], AX
+	MOV		AX, [ES:DI+0x14]
+	MOV		WORD [SCRNY], AX
+	MOV		EAX, [ES:DI+0x28]
+	MOV		DWORD [VRAM], EAX
+	JMP		keystatus
+
+scrn320:
+	MOV		AL, 0x13
+	MOV		AH, 0x00
+	INT		0x10
+	MOV		BYTE [VMODE], 8
+	MOV		BYTE [SCRNX], 320
+	MOV		BYTE [SCRNY], 200
 	MOV		DWORD [VRAM], 0x000a0000
 
+keystatus:
 	; keyboard led state
 	MOV		AH, 0x02
 	INT		0x16

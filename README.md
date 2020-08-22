@@ -23,3 +23,6 @@ Ubuntu 18.04/20.04のQEMU上で動作することを確認している。
 - for文の直下を`count++`のみにすると動作しなくなった
   - [このブログ](https://wisteria0410ss.hatenablog.com/entry/2019/02/10/222931)を参考に`-enable-kvm`をパラメータに追加
   - permission deniedが出たので、[ここ](https://canal.idletime.be/qemu/ubuntu.html)を参考に`$ gpasswd -a (user) kvm`
+
+## 14日目
+- 解像度設定で`0x107`は対応していないと書いてあるが、動作した

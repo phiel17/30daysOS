@@ -60,6 +60,16 @@ void HariMain(void){
 	struct FIFO32 fifo;
 	struct TIMER *timer1, *timer2, *timer3;
 
+	static char keytable[0x54] = {
+		0,   0,   '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '^', 0,   0,
+		'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '@', '[', 0,   0,   'A', 'S',
+		'D', 'F', 'G', 'H', 'J', 'K', 'L', ';', ':', 0,   0,   ']', 'Z', 'X', 'C', 'V',
+		'B', 'N', 'M', ',', '.', '/', 0,   '*', 0,   ' ', 0,   0,   0,   0,   0,   0,
+		0,   0,   0,   0,   0,   0,   0,   '7', '8', '9', '-', '4', '5', '6', '+', '1',
+		'2', '3', '0', '.'
+	};
+
+
 	init_gdtidt();
 	init_pic();
 	io_sti();
@@ -113,16 +123,13 @@ void HariMain(void){
 	sprintf(s, "memory %d MB  free: %d KB", memtotal / (1024 * 1024), memman_total(memman) / 1024);
 	putfonts8_asc_sht(sheet_back, 0, 32, COL8_FFFFFF, COL8_008484, s, 40);
 
-	int count = 0;
+	int temp = 0;
+	char t[30] = {0};
 	for (;;) {
-		count++;
-
-		// putfonts8_asc_sht(sheet_win, 40, 28, COL8_000000, COL8_C6C6C6, "test", 4);
-
 		io_cli();
 
 		if(fifo32_status(&fifo) == 0){
-			io_sti();
+			io_stihlt();
 		} else {
 			int d = fifo32_get(&fifo);
 			io_sti();
@@ -130,7 +137,19 @@ void HariMain(void){
 			if(256 <= d && d < 512) {	// keyboard
 				sprintf(s, "%x", d - 256);
 				putfonts8_asc_sht(sheet_back, 0, 16, COL8_FFFFFF, COL8_008484, s, 2);
-			} else if (512 <= d && d < 768) {
+
+				if (d < 256 + 0x54 && keytable[d - 256]) {
+					t[temp] = keytable[d - 256];
+					t[temp + 1] = 0;
+					putfonts8_asc_sht(sheet_win, 20, 28, COL8_000000, COL8_C6C6C6, t, 13);
+					temp++;
+				}
+				if (d == 256 + 0x0e && temp > 0) {
+					temp--;
+					t[temp] = 0;
+					putfonts8_asc_sht(sheet_win, 20, 28, COL8_000000, COL8_C6C6C6, t, 13);
+				}
+			} else if (512 <= d && d < 768) {	// mouse
 				if (mouse_decode(&mdec, d - 512) == 1) {
 					sprintf(s, "[lcr %d %d]", mdec.x, mdec.y);
 					if ((mdec.btn & 0x01)){
@@ -161,14 +180,15 @@ void HariMain(void){
 					sprintf(s, "(%d, %d)", mx, my);
 					putfonts8_asc_sht(sheet_back, 0, 0, COL8_FFFFFF, COL8_008484, s, 10);
 					sheet_slide(sheet_mouse, mx, my);
+
+					if ((mdec.btn & 0x01)) {
+						sheet_slide(sheet_win, mx - 80, my - 8);
+					}
 				}
-			} else if (d == 10) {
+			} else if (d == 10) {		// timers
 				putfonts8_asc_sht(sheet_back, 0, 64, COL8_FFFFFF, COL8_008484, "10[sec]", 7);
-				sprintf(s, "%d", count);
-				putfonts8_asc_sht(sheet_win, 40, 28, COL8_000000, COL8_C6C6C6, s, 10);
 			} else if (d == 3) {
 				putfonts8_asc_sht(sheet_back, 0, 80, COL8_FFFFFF, COL8_008484, "3[sec]", 6);
-				count = 0;
 			} else if (d == 1 || d == 0) {
 				if (d) {
 					timer_init(timer3, &fifo, 0);
