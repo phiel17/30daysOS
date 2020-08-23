@@ -7,6 +7,20 @@ $ sudo apt install gcc nasm qemu-system-x86 qemu-kvm libvirt-bin
 Ubuntu 18.04/20.04のQEMU上で動作することを確認している。
 コンパイルの方法などはMakefileを参照。
 
+## Ubuntu 20.04環境でのトラブルシューティング
+
+### ldで.note.gnu.propertyセクションと.dataセクションが重なる
+
+14日目終了時に20.04環境でmakeしたところ
+```
+/usr/bin/ld: section .note.gnu.property LMA [0000000000002c1c,0000000000002d6b] overlaps section .data LMA [0000000000002c19,0000000000003ed4]
+```
+というエラーが出たので、har.ldのdataセクションのアドレスを以下のようにずらすことで動作させた。
+```
+.data 0x310000 : AT ( ADDR(.text) + SIZEOF(.text) + 0x200 ) {
+```
+ちょっと無理やりな解決法な気がするが、動いているので良しとする
+
 ## 8日目
 
 - マウス移動時の数値表示がおかしくなっているが、うまくうごいているので無視した
