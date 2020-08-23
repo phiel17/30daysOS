@@ -6,6 +6,7 @@ GLOBAL	load_cr0, store_cr0
 GLOBAL	load_gdtr, load_idtr
 GLOBAL	asm_inthandler20, asm_inthandler21, asm_inthandler27, asm_inthandler2c
 GLOBAL	memtest_sub
+GLOBAL	load_tr, taskswitch
 
 EXTERN	inthandler20, inthandler21, inthandler27, inthandler2c
 
@@ -190,4 +191,12 @@ memtest_sub:
 	POP		EBX
 	POP		ESI
 	POP		EDI
+	RET
+
+load_tr:
+	LTR		[ESP + 4]
+	RET
+
+taskswitch:
+	JMP	FAR	[ESP + 4]
 	RET

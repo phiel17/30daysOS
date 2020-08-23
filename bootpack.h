@@ -26,6 +26,8 @@ void asm_inthandler21(void);
 void asm_inthandler27(void);
 void asm_inthandler2c(void);
 unsigned int memtest_sub(unsigned int start, unsigned int end);
+void load_tr(int tr);
+void taskswitch(int eip, int cs);
 
 // fifo.c
 struct FIFO32 {
@@ -126,6 +128,7 @@ void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar);
 #define LIMIT_BOOTPACK	(0x0007ffff)
 #define AR_DATA32_RW	(0x4092)
 #define AR_CODE32_ER	(0x409a)
+#define AR_TSS32		(0x0089)
 #define AR_INTGATE32	(0x008e)
 
 
@@ -181,6 +184,11 @@ struct MOUSE_DEC {
 void inthandler2c(int *esp);
 void enable_mouse(struct FIFO32 *fifo, int data0, struct MOUSE_DEC *mdec);
 int mouse_decode(struct MOUSE_DEC *mdec, unsigned char dat);
+
+// mtask.c
+extern struct TIMER *mt_timer;
+void mt_init(void);
+void mt_taskswitch(void);
 
 // mysprintf.c
 void sprintf(char *str, char *fmt, ...);
