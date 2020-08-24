@@ -7,6 +7,7 @@ struct BOOTINFO {
 	char* vram;
 };
 #define ADDR_BOOTINFO	(0x00000ff0)
+#define ADDR_DISKIMG	(0x00100000)
 
 // nasmfunc.asm
 void io_hlt(void);
@@ -225,5 +226,6 @@ void task_run(struct TASK *task, int level, int priority);
 void task_switch(void);
 void task_sleep(struct TASK *task);
 
-// mysprintf.c
+// myfuncs.c
 void sprintf(char *str, char *fmt, ...);
+int strcmp(const char *s1, const char *s2);

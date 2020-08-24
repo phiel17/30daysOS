@@ -2,6 +2,13 @@
 
 #define KEYCMD_LED		(0xed)
 
+struct FILEINFO {
+	unsigned char name[8], ext[3], type;
+	char reserve[10];
+	unsigned short time, date, clustno;
+	unsigned int size;
+};
+
 void make_windowtitle8(unsigned char *buf, int xsize, char *title, char act) {
 	static char closebtn[14][16] = {
 		"OOOOOOOOOOOOOOO@",
@@ -78,10 +85,30 @@ void make_textbox8(struct SHEET *sht, int x0, int y0, int sx, int sy, int c)
 	return;
 }
 
-void console_task(struct SHEET* sheet) {
+int cons_newline(int cursor_y, struct SHEET *sheet) {
+	if (cursor_y < 28 + 112) {
+		cursor_y += 16;
+	} else {
+		for (int y = 28; y < 28 + 112; y++) {
+			for (int x = 8; x < 8 + 240; x++) {
+				sheet->buf[x + y * sheet->bxsize] = sheet->buf[x + (y + 16) * sheet->bxsize];
+			}
+		}
+		for (int y = 28 + 112; y < 28 + 128; y++) {
+			for (int x = 8; x < 8 + 240; x++) {
+				sheet->buf[x + y * sheet->bxsize] = COL8_000000;
+			}
+		}
+		sheet_refresh(sheet, 8, 28, 8 + 240, 28 + 128);
+	}
+	return cursor_y;
+}
+
+void console_task(struct SHEET* sheet, unsigned int memtotal) {
 	struct TASK* task = task_now();
-	int fifobuf[128], cursor_x = 16, cursor_c = COL8_000000;
-	char s[2];
+	int fifobuf[128], cursor_x = 16, cursor_y = 28, cursor_c = -1;
+	char s[30], cmdline[30];
+	struct MEMMAN *memman = (struct MEMMAN *) MEMMAN_ADDR;
 
 	fifo32_init(&task->fifo, 128, fifobuf, task);
 	struct TIMER* timer = timer_alloc();
@@ -102,30 +129,96 @@ void console_task(struct SHEET* sheet) {
 			if (d == 0 || d == 1) {		// cursor
 				if (d) {
 					timer_init(timer, &task->fifo, 0);
-					cursor_c = COL8_FFFFFF;
+					if (cursor_c >= 0) {
+						cursor_c = COL8_FFFFFF;
+					}
 				} else {
 					timer_init(timer, &task->fifo, 1);
-					cursor_c = COL8_000000;
+					if (cursor_c >= 0) {
+						cursor_c = COL8_000000;
+					}
 				}
 				timer_settime(timer, 50);
+			}
+			if (d == 2) {
+				cursor_c = COL8_FFFFFF;
+			}
+			if (d == 3) {
+				boxfill8(sheet->buf, sheet->bxsize, COL8_000000, cursor_x, cursor_y, cursor_x + 7, cursor_y + 15);
+				cursor_c = -1;
 			}
 			if (256 <= d && d < 512) {	// keyboard
 				if (d == 8 + 256) {	// backspace
 					if (cursor_x > 16) {
-						putfonts8_asc_sht(sheet, cursor_x, 28, COL8_FFFFFF, COL8_000000, " ", 1);
+						putfonts8_asc_sht(sheet, cursor_x, cursor_y, COL8_FFFFFF, COL8_000000, " ", 1);
 						cursor_x -= 8;
 					}
+				} else if (d == 10 + 256) {
+					putfonts8_asc_sht(sheet, cursor_x, cursor_y, COL8_FFFFFF, COL8_000000, " ", 1);
+					cmdline[cursor_x / 8 - 2] = 0;
+					cursor_y = cons_newline(cursor_y, sheet);
+
+					// mem command
+					if (!strcmp(cmdline, "mem")) {
+						sprintf(s, "total   %d MB", memtotal / (1024 * 1024));
+						putfonts8_asc_sht(sheet, 8, cursor_y, COL8_FFFFFF, COL8_000000, s, 30);
+						cursor_y = cons_newline(cursor_y, sheet);
+						sprintf(s, "free    %d MB", memman_total(memman) / 1024);
+						putfonts8_asc_sht(sheet, 8, cursor_y, COL8_FFFFFF, COL8_000000, s, 30);
+						cursor_y = cons_newline(cursor_y, sheet);
+						cursor_y = cons_newline(cursor_y, sheet);
+					} else if (!strcmp(cmdline, "cls")) {
+						for (int y = 28; y < 28 + 128; y++) {
+							for (int x = 8; x < 8 + 240; x++) {
+								sheet->buf[x + y * sheet->bxsize] = COL8_000000;
+							}
+						}
+						sheet_refresh(sheet, 8, 28, 8 + 240, 28 + 128);
+						cursor_y = 28;
+					} else if (!strcmp(cmdline, "dir")){
+						struct FILEINFO *finfo = (struct FILEINFO *) (ADDR_DISKIMG + 0x002600);
+
+						for (int x = 0; x < 224; x++) {
+							if (finfo[x].name[0] == 0x00) {
+								break;
+							}
+							if (finfo[x].name[0] != 0xe5) {
+								if ((finfo[x].type & 0x18) == 0) {
+									sprintf(s, "filename.ext    %d", finfo[x].size);
+									for(int y = 0; y < 8; y++) {
+										s[y] = finfo[x].name[y];
+									}
+									s[9] = finfo[x].ext[0];
+									s[10] = finfo[x].ext[1];
+									s[11] = finfo[x].ext[2];
+									putfonts8_asc_sht(sheet, 8, cursor_y, COL8_FFFFFF, COL8_000000, s, 30);
+									cursor_y = cons_newline(cursor_y, sheet);
+								}
+							}
+						}
+						cursor_y = cons_newline(cursor_y, sheet);
+					} else if (cmdline[0] != 0) {
+						putfonts8_asc_sht(sheet, 8, cursor_y, COL8_FFFFFF, COL8_000000, "Bad command.", 30);
+						cursor_y = cons_newline(cursor_y, sheet);
+						cursor_y = cons_newline(cursor_y, sheet);
+					}
+					putfonts8_asc_sht(sheet, 8, cursor_y, COL8_FFFFFF, COL8_000000, ">", 1);
+					cursor_x = 16;
 				} else {
 					if (cursor_x < 240) {
 						s[0] = d - 256;
 						s[1] = 0;
-						putfonts8_asc_sht(sheet, cursor_x, 28, COL8_FFFFFF, COL8_000000, s, 1);
+						cmdline[cursor_x / 8 - 2] = d - 256;
+						cmdline[cursor_x / 8 - 1] = 0;
+						putfonts8_asc_sht(sheet, cursor_x, cursor_y, COL8_FFFFFF, COL8_000000, s, 1);
 						cursor_x += 8;
 					}
 				}
 			}
-			boxfill8(sheet->buf, sheet->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43);
-			sheet_refresh(sheet, cursor_x, 28, cursor_x + 8, 44);
+			if (cursor_c >= 0) {
+				boxfill8(sheet->buf, sheet->bxsize, cursor_c, cursor_x, cursor_y, cursor_x + 7, cursor_y + 15);
+			}
+			sheet_refresh(sheet, cursor_x, cursor_y, cursor_x + 8, cursor_y + 16);
 		}
 	}
 }
@@ -145,7 +238,7 @@ void HariMain(void){
 
 	struct TASK *task_a, *cons;
 
-	static char keytable[2][0x54] = {
+	static char keytable[2][0x80] = {
 		{
 			0,   0,   '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '^', 0,   0,
 			'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '@', '[', 0,   0,   'A', 'S',
@@ -217,7 +310,7 @@ void HariMain(void){
 	make_window8(buf_sheet_cons, 256, 165, "console", 0);
 	make_textbox8(sheet_cons, 8, 28, 240, 128, COL8_000000);
 	struct TASK* task_cons = task_alloc();
-	task_cons->tss.esp = memman_alloc_4k(memman, 64 * 1024) + 64 * 1024 - 8;
+	task_cons->tss.esp = memman_alloc_4k(memman, 64 * 1024) + 64 * 1024 - 12;
 	task_cons->tss.eip = (int) &console_task;
 	task_cons->tss.es = 1 * 8;
 	task_cons->tss.cs = 2 * 8;
@@ -226,6 +319,7 @@ void HariMain(void){
 	task_cons->tss.fs = 1 * 8;
 	task_cons->tss.gs = 1 * 8;
 	*((int *) (task_cons->tss.esp + 4)) = (int) sheet_cons;
+	*((int *) (task_cons->tss.esp + 8)) = (int) memtotal;
 	task_run(task_cons, 2, 2);
 
 	sheet_slide(sheet_back, 0, 0);
@@ -242,8 +336,8 @@ void HariMain(void){
 	timer_init(timer, &fifo, 1);
 	timer_settime(timer, 50);
 
-	sprintf(s, "memory %d MB  free: %d KB", memtotal / (1024 * 1024), memman_total(memman) / 1024);
-	putfonts8_asc_sht(sheet_back, 0, 32, COL8_FFFFFF, COL8_008484, s, 40);
+	// sprintf(s, "memory %d MB  free: %d KB", memtotal / (1024 * 1024), memman_total(memman) / 1024);
+	// putfonts8_asc_sht(sheet_back, 0, 32, COL8_FFFFFF, COL8_008484, s, 40);
 
 	int key_to = 0, key_shift = 0;
 	int cursor_x = 8, cursor_c = COL8_FFFFFF;
@@ -264,8 +358,8 @@ void HariMain(void){
 			io_sti();
 
 			if(256 <= d && d < 512) {	// keyboard
-				sprintf(s, "%x", d - 256);
-				putfonts8_asc_sht(sheet_back, 0, 16, COL8_FFFFFF, COL8_008484, s, 2);
+				// sprintf(s, "%x", d - 256);
+				// putfonts8_asc_sht(sheet_back, 0, 16, COL8_FFFFFF, COL8_008484, s, 2);
 
 				s[0] = (d < 0x80 + 256)? keytable[key_shift][d - 256] : 0;
 				if ('A' <= s[0] && s[0] <= 'Z' && ((!(key_leds & 4) && !key_shift) || ((key_leds & 4) && key_shift))) {
@@ -295,14 +389,25 @@ void HariMain(void){
 						key_to = 1;
 						make_windowtitle8(buf_sheet_win, sheet_win->bxsize, "task_a", 0);
 						make_windowtitle8(buf_sheet_cons, sheet_cons->bxsize, "console", 1);
+						cursor_c = -1;
+						boxfill8(sheet_win->buf, sheet_win->bxsize, COL8_FFFFFF, cursor_x, 28, cursor_x + 7, 43);
+						fifo32_put(&task_cons->fifo, 2);
 					} else {
 						key_to = 0;
 						make_windowtitle8(buf_sheet_win, sheet_win->bxsize, "task_a", 1);
 						make_windowtitle8(buf_sheet_cons, sheet_cons->bxsize, "console", 0);
+						cursor_c = COL8_000000;
+						fifo32_put(&task_cons->fifo, 3);
 					}
 					sheet_refresh(sheet_win, 0, 0, sheet_win->bxsize, 21);
 					sheet_refresh(sheet_cons, 0, 0, sheet_cons->bxsize, 21);
 				}
+				if (d == 256 + 0x1c) {
+					if (key_to != 0) {
+						fifo32_put(&task_cons->fifo, 10 + 256);
+					}
+				}
+
 				if (d == 256+ 0x2a) {	// left shift on
 					key_shift |= 1;
 				}
@@ -337,19 +442,23 @@ void HariMain(void){
 					wait_KBC_sendready();
 					io_out8(PORT_KEYDAT, keycmd_wait);
 				}
+				if (cursor_c >= 0) {
+					boxfill8(sheet_win->buf, sheet_win->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43);
+				}
+				sheet_refresh(sheet_win, cursor_x, 28, cursor_x + 8, 44);
 			} else if (512 <= d && d < 768) {	// mouse
 				if (mouse_decode(&mdec, d - 512) == 1) {
-					sprintf(s, "[lcr %d %d]", mdec.x, mdec.y);
-					if ((mdec.btn & 0x01)){
-						s[1] = 'L';
-					}
-					if ((mdec.btn & 0x02)){
-						s[3] = 'R';
-					}
-					if ((mdec.btn & 0x04)){
-						s[2] = 'C';
-					}
-					putfonts8_asc_sht(sheet_back, 32, 16, COL8_FFFFFF, COL8_008484, s, 15);
+					// sprintf(s, "[lcr %d %d]", mdec.x, mdec.y);
+					// if ((mdec.btn & 0x01)){
+					// 	s[1] = 'L';
+					// }
+					// if ((mdec.btn & 0x02)){
+					// 	s[3] = 'R';
+					// }
+					// if ((mdec.btn & 0x04)){
+					// 	s[2] = 'C';
+					// }
+					// putfonts8_asc_sht(sheet_back, 32, 16, COL8_FFFFFF, COL8_008484, s, 15);
 
 					mx += mdec.x;
 					my += mdec.y;
@@ -365,8 +474,8 @@ void HariMain(void){
 					if (my > binfo->scrny - 1) {
 						my = binfo->scrny - 1;
 					}
-					sprintf(s, "(%d, %d)", mx, my);
-					putfonts8_asc_sht(sheet_back, 0, 0, COL8_FFFFFF, COL8_008484, s, 10);
+					// sprintf(s, "(%d, %d)", mx, my);
+					// putfonts8_asc_sht(sheet_back, 0, 0, COL8_FFFFFF, COL8_008484, s, 10);
 					sheet_slide(sheet_mouse, mx, my);
 
 					if ((mdec.btn & 0x01)) {
@@ -376,15 +485,21 @@ void HariMain(void){
 			} else if (d == 1 || d == 0) {
 				if (d) {
 					timer_init(timer, &fifo, 0);
-					cursor_c = COL8_000000;
+					if (cursor_c >= 0){
+						cursor_c = COL8_000000;
+					}
 				} else {
 					timer_init(timer, &fifo, 1);
-					cursor_c = COL8_FFFFFF;
+					if (cursor_c >= 0){
+						cursor_c = COL8_FFFFFF;
+					}
 				}
 				timer_settime(timer, 50);
+				if (cursor_c >= 0){
+					boxfill8(buf_sheet_win, sheet_win->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43);
+					sheet_refresh(sheet_win, cursor_x, 28, cursor_x + 8, 44);
+				}
 			}
-			boxfill8(buf_sheet_win, sheet_win->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43);
-			sheet_refresh(sheet_win, cursor_x, 28, cursor_x + 8, 44);
 		}
 	}
 }

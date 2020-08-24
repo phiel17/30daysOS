@@ -63,3 +63,18 @@ void sprintf (char *str, char *fmt, ...) {
 	*str = 0x00; //最後にNULLを追加
 	va_end (list);
 }
+
+int strcmp(const char *s1, const char *s2) {
+	for (;;) {
+		if (*s1 == *s2) {
+			if (*s1 == 0){
+				return 0;
+			}
+			s1++;
+			s2++;
+			continue;
+		} else {
+			return (*s1 - *s2);
+		}
+	}
+}
