@@ -31,7 +31,7 @@ nasmfunc.o: nasmfunc.asm
 	$(CC) $(CFLAGS) -c $< -o $@
 
 bootpack.hrb: $(OBJS) nasmfunc.o har.ld
-	$(CC) $(CFLAGS) -T har.ld $(OBJS) nasmfunc.o -o $@
+	$(CC) $(CFLAGS) -T har.ld $(OBJS) nasmfunc.o -Wl,-Map=bootpack.map -o $@
 
 app/%.hrb: app/%.asm
 	nasm $< -o $@
@@ -41,4 +41,4 @@ run: $(TARGET)
 
 .PHONY: clean
 clean:
-	rm -f *.img *.bin *.sys *.hrb *.o
+	rm -f *.img *.bin *.sys *.hrb *.o app/*.hrb

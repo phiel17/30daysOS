@@ -151,7 +151,7 @@ void task_sleep(struct TASK *task){
 		if (task == now_task) {
 			task_switchsub();
 			now_task = task_now();
-			taskswitch(0, now_task->sel);
+			farjmp(0, now_task->sel);
 		}
 	}
 	return;
@@ -173,7 +173,7 @@ void task_switch(void) {
 	struct TASK* new_task = tl->tasks[tl->now];
 	timer_settime(task_timer, new_task->priority);
 	if (new_task != now_task) {
-		taskswitch(0, new_task->sel);
+		farjmp(0, new_task->sel);
 	}
 	return;
 }

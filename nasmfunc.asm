@@ -6,9 +6,11 @@ GLOBAL	load_cr0, store_cr0
 GLOBAL	load_gdtr, load_idtr
 GLOBAL	asm_inthandler20, asm_inthandler21, asm_inthandler27, asm_inthandler2c
 GLOBAL	memtest_sub
-GLOBAL	load_tr, taskswitch
+GLOBAL	load_tr, farjmp, farcall
+GLOBAL	asm_hrb_api
 
 EXTERN	inthandler20, inthandler21, inthandler27, inthandler2c
+EXTERN	hrb_api
 
 io_hlt:
 	HLT
@@ -197,6 +199,20 @@ load_tr:
 	LTR		[ESP + 4]
 	RET
 
-taskswitch:
+farjmp:
 	JMP	FAR	[ESP + 4]
 	RET
+
+farcall:
+	CALL FAR	[ESP + 4]
+	RET
+
+asm_hrb_api:
+	STI
+	PUSHAD	; for recovery
+	PUSHAD	; for hrb_api
+	CALL	hrb_api
+	ADD		ESP, 32
+	POPAD
+	POPAD
+	IRETD
