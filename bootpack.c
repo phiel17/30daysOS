@@ -80,13 +80,12 @@ void make_textbox8(struct SHEET *sht, int x0, int y0, int sx, int sy, int c)
 
 void console_task(struct SHEET* sheet) {
 	struct TASK* task = task_now();
-	struct FIFO32 *fifo = &task->fifo;
 	int fifobuf[128], cursor_x = 16, cursor_c = COL8_000000;
 	char s[2];
 
-	fifo32_init(fifo, 128, fifobuf, task);
+	fifo32_init(&task->fifo, 128, fifobuf, task);
 	struct TIMER* timer = timer_alloc();
-	timer_init(timer, fifo, 1);
+	timer_init(timer, &task->fifo, 1);
 	timer_settime(timer, 50);
 
 	putfonts8_asc_sht(sheet, 8, 28, COL8_FFFFFF, COL8_000000, ">", 1);
@@ -94,18 +93,18 @@ void console_task(struct SHEET* sheet) {
 	for (;;) {
 		io_cli();
 
-		if (fifo32_status(fifo) == 0) {
+		if (fifo32_status(&task->fifo) == 0) {
 			task_sleep(task);
 			io_sti();
 		} else {
-			int d = fifo32_get(fifo);
+			int d = fifo32_get(&task->fifo);
 			io_sti();
 			if (d == 0 || d == 1) {		// cursor
 				if (d) {
-					timer_init(timer, fifo, 0);
+					timer_init(timer, &task->fifo, 0);
 					cursor_c = COL8_FFFFFF;
 				} else {
-					timer_init(timer, fifo, 1);
+					timer_init(timer, &task->fifo, 1);
 					cursor_c = COL8_000000;
 				}
 				timer_settime(timer, 50);
@@ -281,7 +280,7 @@ void HariMain(void){
 						fifo32_put(&task_cons->fifo, s[0] + 256);
 					}
 				}
-				if (d == 256 + 0x0e && cursor_x > 0) {	// backspace
+				if (d == 256 + 0x0e) {	// backspace
 					if (key_to == 0){
 						if (cursor_x > 8) {
 							putfonts8_asc_sht(sheet_win, cursor_x, 28, COL8_000000, COL8_FFFFFF, " ", 1);
@@ -334,11 +333,11 @@ void HariMain(void){
 				if (d == 256 + 0xfa) {	// keyboard successfully get data
 					keycmd_wait = -1;
 				}
-				if (d == 256 + 0xfa) {	// keyboard failed to get data
+				if (d == 256 + 0xfe) {	// keyboard failed to get data
 					wait_KBC_sendready();
 					io_out8(PORT_KEYDAT, keycmd_wait);
 				}
-		} else if (512 <= d && d < 768) {	// mouse
+			} else if (512 <= d && d < 768) {	// mouse
 				if (mouse_decode(&mdec, d - 512) == 1) {
 					sprintf(s, "[lcr %d %d]", mdec.x, mdec.y);
 					if ((mdec.btn & 0x01)){
@@ -383,9 +382,9 @@ void HariMain(void){
 					cursor_c = COL8_FFFFFF;
 				}
 				timer_settime(timer, 50);
-				boxfill8(buf_sheet_win, sheet_win->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43);
-				sheet_refresh(sheet_win, cursor_x, 28, cursor_x + 8, 44);
 			}
+			boxfill8(buf_sheet_win, sheet_win->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43);
+			sheet_refresh(sheet_win, cursor_x, 28, cursor_x + 8, 44);
 		}
 	}
 }
