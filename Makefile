@@ -41,4 +41,4 @@ run: $(TARGET)
 
 .PHONY: clean
 clean:
-	rm -f *.img *.bin *.sys *.hrb *.o app/*.hrb
+	rm -f *.img *.bin *.sys *.hrb *.o *.map app/*.hrb
