@@ -276,22 +276,38 @@ void console_task(struct SHEET* sheet, unsigned int memtotal) {
 }
 
 int* hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax) {
-	int cs_base = *((int *) 0xfe8);
-	struct CONSOLE *cons = (struct CONSOLE *) *((int *) 0x0fec);
+	int ds_base = *((int *) 0xfe8);
 	struct TASK* task = task_now();
+	struct CONSOLE *cons = (struct CONSOLE *) *((int *) 0x0fec);
+	struct SHEETCTL *sheetctl = (struct SHEETCTL *) *((int *) 0x0fe4);
+	int *reg = &eax + 1;
+	// reg[i]: EDI, ESI, EBP, ESP, EBX, EDX, ECX, EAX
 
 	char s[12];
 
 	if (edx == 1) {
 		cons_putchar(cons, eax & 0xff, 1);
 	} else if (edx == 2) {
-		cons_putstr0(cons, (char*) ebx + cs_base);
+		cons_putstr0(cons, (char*) ebx + ds_base);
 	} else if (edx == 3) {
-		cons_putstr1(cons, (char*) ebx + cs_base, ecx);
+		cons_putstr1(cons, (char*) ebx + ds_base, ecx);
 	} else if (edx == 4) {
 		return &(task->tss.esp0);
-	} else if (edx == 123456789) {
-		*((char*) 0x00102600) = 0;
+	} else if (edx == 5) {
+		struct SHEET *sheet = sheet_alloc(sheetctl);
+		sheet_setbuf(sheet, (char *)ebx + ds_base, esi, edi, eax);
+		make_window8((char *)ebx + ds_base, esi, edi, (char *)ecx + ds_base, 0);
+		sheet_slide(sheet, 100, 50);
+		sheet_updown(sheet, 3);
+		reg[7] = (int)sheet;
+	} else if (edx == 6) {
+		struct SHEET *sheet = (struct SHEET *) ebx;
+		putfonts8_asc(sheet->buf, sheet->bxsize, esi, edi, eax, (char *) ebp + ds_base);
+		sheet_refresh(sheet, esi, edi, esi + ecx * 8, edi + 16);
+	} else if (edx == 7) {
+		struct SHEET *sheet = (struct SHEET *) ebx;
+		boxfill8(sheet->buf, sheet->bxsize, ebp, eax, ecx, esi, edi);
+		sheet_refresh(sheet, eax, ecx, esi + 1, edi + 1);
 	}
 	return 0;
 }

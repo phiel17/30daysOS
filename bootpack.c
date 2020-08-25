@@ -66,6 +66,7 @@ void HariMain(void){
 
 	init_palette();
 	sheetctl = sheetctl_init(memman, binfo->vram, binfo->scrnx, binfo->scrny);
+	*((int*) 0x0fe4) = (int) sheetctl;
 
 	sheet_back = sheet_alloc(sheetctl);
 	buf_sheet_back = (unsigned char *)memman_alloc_4k(memman, binfo->scrnx * binfo->scrny);

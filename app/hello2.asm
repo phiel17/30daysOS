@@ -12,4 +12,4 @@ app_main:
 
 section .data
 msg:
-	DB	"hello", 10, 0
+	DB	"hello", 0

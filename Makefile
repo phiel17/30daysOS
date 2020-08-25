@@ -1,7 +1,8 @@
-.PHONY: all clean
+.PHONY: all clean app
 
 CC		= gcc
 CFLAGS	= -march=i486 -m32 -nostdlib -fno-builtin -fno-pie -no-pie -g
+MAKE	= make --no-print-directory
 
 TARGET	= haribote.img
 SRCS	= $(wildcard *.c)
@@ -9,10 +10,7 @@ OBJS	= $(patsubst %c, %o, $(SRCS))
 APPSRCS	= $(filter-out app/a_nasm.asm, $(wildcard app/*.asm) $(wildcard app/*.c))
 APP		= $(patsubst %c, %hrb, $(patsubst %asm, %hrb, $(APPSRCS)))
 
-all: $(TARGET) $(APP)
-
-$(APP):
-	make -C app
+all: $(TARGET)
 
 $(TARGET): ipl10.bin haribote.sys $(APP)
 	mformat -f 1440 -C -B ipl10.bin -i haribote.img ::
@@ -35,6 +33,18 @@ nasmfunc.o: nasmfunc.asm
 
 bootpack.hrb: $(OBJS) nasmfunc.o har.ld
 	$(CC) $(CFLAGS) -T har.ld $(OBJS) nasmfunc.o -Wl,-Map=bootpack.map -o $@
+
+app/%.hrb: app/%.o app/a_nasm.o
+	$(CC) $(CFLAGS) -T app/apphar.ld $^ -o $@
+
+app/%.o: app/%.asm
+	nasm -felf -g $< -o $@
+
+app/%.o: app/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+app/a_nasm.o: app/a_nasm.asm
+	nasm -felf -g $< -o $@
 
 run: $(TARGET)
 	qemu-system-i386 -fda $< -m 32 -enable-kvm
