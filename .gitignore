@@ -5,6 +5,6 @@
 !*.asm
 !*.c
 !*.h
-!har.ld
+!*.ld
 !hankaku.txt
 !app/

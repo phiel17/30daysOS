@@ -22,6 +22,8 @@ int load_cr0(void);
 void store_cr0(int cr0);
 void load_gdtr(int limit, int addr);
 void load_idtr(int limit, int addr);
+void asm_inthandler0c(void);
+void asm_inthandler0d(void);
 void asm_inthandler20(void);
 void asm_inthandler21(void);
 void asm_inthandler27(void);
@@ -30,7 +32,9 @@ unsigned int memtest_sub(unsigned int start, unsigned int end);
 void load_tr(int tr);
 void farjmp(int eip, int cs);
 void farcall(int epi, int cs);
+void start_app(int eip, int cs, int esp, int ds, int* tss_esp0);
 void asm_hrb_api(void);
+void asm_end_app(void);
 
 // fifo.c
 struct FIFO32 {
@@ -240,7 +244,11 @@ struct CONSOLE {
 };
 void console_task(struct SHEET *sheet, unsigned int memtotal);
 void cons_newline(struct CONSOLE *cons);
-void hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
+void cons_putstr0(struct CONSOLE *cons, char *s);
+
+int* hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
+int* inthandler0d(int *esp);
+int* inthandler0c(int *esp);
 
 // file.c
 struct FILEINFO {

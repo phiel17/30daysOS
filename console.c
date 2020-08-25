@@ -29,7 +29,7 @@ void cons_putchar(struct CONSOLE *cons, int chr, char move) {
 		for (;;) {
 			putfonts8_asc_sht(cons->sheet, cons->cur_x, cons->cur_y, COL8_FFFFFF, COL8_000000, " ", 1);
 			cons->cur_x += 8;
-			if (cons->cur_x == cons->sheet->bysize - 8) {
+			if (cons->cur_x >= cons->sheet->bxsize - 8) {
 				cons_newline(cons);
 			}
 			if (((cons->cur_x - 8) & 0x1f) == 0) {
@@ -44,7 +44,7 @@ void cons_putchar(struct CONSOLE *cons, int chr, char move) {
 		putfonts8_asc_sht(cons->sheet, cons->cur_x, cons->cur_y, COL8_FFFFFF, COL8_000000, s, 1);
 		if (move){
 			cons->cur_x += 8;
-			if (cons->cur_x == cons->sheet->bysize - 8) {
+			if (cons->cur_x == cons->sheet->bxsize - 8) {
 				cons_newline(cons);
 			}
 		}
@@ -124,6 +124,7 @@ void cons_cmd_cat(struct CONSOLE *cons, int *fat, char *cmdline) {
 int cons_cmd_app(struct CONSOLE *cons, int *fat, char *cmdline) {
 	struct MEMMAN *memman = (struct MEMMAN *) MEMMAN_ADDR;
 	struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) ADDR_GDT;
+	struct TASK* task = task_now();
 	char name[18];
 
 	int index;
@@ -148,8 +149,27 @@ int cons_cmd_app(struct CONSOLE *cons, int *fat, char *cmdline) {
 	if (finfo) {
 		char *p = (char*) memman_alloc_4k(memman, finfo->size);
 		file_loadfile(finfo->clustno, finfo->size, p, fat, (char *) (ADDR_DISKIMG + 0x003e00));
-		set_segmdesc(gdt + 1003, finfo->size - 1, (int)p, AR_CODE32_ER);
-		farcall(0, 1003 * 8);
+		if (finfo->size >= 8 && !strncmp(p + 4, "Hari", 4)) {
+			int segsize = *((int *) (p + 0x0000));
+			int esp = *((int *) (p + 0x000c));
+			int datsize = *((int *) (p + 0x0010));
+			int dathrb = *((int *) (p + 0x0014));
+			char *q = (char*) memman_alloc_4k(memman, 64 * segsize);
+			*((int *) 0xfe8) = (int) q;
+
+			set_segmdesc(gdt + 1003, finfo->size - 1, (int)p, AR_CODE32_ER + 0x60);
+			set_segmdesc(gdt + 1004, segsize - 1, (int) q, AR_DATA32_RW + 0x60);
+
+			for (int i = 0; i < datsize; i++) {
+				q[esp + i] = p[dathrb + i];
+			}
+
+			start_app(0x1b, 1003 * 8, 64 * 1024, 1004 * 8, &(task->tss.esp0));
+			memman_free_4k(memman, (int)q, segsize);
+		} else {
+			cons_putstr0(cons, ".hrb file format error.\n");
+		}
+
 		memman_free_4k(memman, (int)p, finfo->size);
 		cons_newline(cons);
 		return 1;
@@ -241,7 +261,7 @@ void console_task(struct SHEET* sheet, unsigned int memtotal) {
 					cons_runcmd(cmdline, &cons, fat, memtotal);
 					cons_putchar(&cons, '>', 1);
 				} else {
-					if (cons.cur_x < sheet->bysize - 16) {
+					if (cons.cur_x < sheet->bxsize - 16) {
 						cmdline[cons.cur_x / 8 - 2] = d - 256;
 						cons_putchar(&cons, d - 256, 1);
 					}
@@ -255,14 +275,45 @@ void console_task(struct SHEET* sheet, unsigned int memtotal) {
 	}
 }
 
-void hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax) {
+int* hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax) {
+	int cs_base = *((int *) 0xfe8);
 	struct CONSOLE *cons = (struct CONSOLE *) *((int *) 0x0fec);
+	struct TASK* task = task_now();
+
+	char s[12];
 
 	if (edx == 1) {
 		cons_putchar(cons, eax & 0xff, 1);
 	} else if (edx == 2) {
-		cons_putstr0(cons, (char*) ebx);
+		cons_putstr0(cons, (char*) ebx + cs_base);
 	} else if (edx == 3) {
-		cons_putstr1(cons, (char*) ebx, ecx);
+		cons_putstr1(cons, (char*) ebx + cs_base, ecx);
+	} else if (edx == 4) {
+		return &(task->tss.esp0);
+	} else if (edx == 123456789) {
+		*((char*) 0x00102600) = 0;
 	}
+	return 0;
+}
+
+int* inthandler0d(int *esp) {
+	struct CONSOLE* cons = (struct CONSOLE *) *((int*) 0x0fec);
+	struct TASK* task = task_now();
+	char s[30];
+
+	cons_putstr0(cons, "\nINT 0D: \n General Protected Exception.\n");
+	sprintf(s, "EIP = %x\n", esp[11]);
+	cons_putstr0(cons, s);
+	return &(task->tss.esp0);
+}
+
+int* inthandler0c(int *esp) {
+	struct CONSOLE* cons = (struct CONSOLE *) *((int*) 0x0fec);
+	struct TASK* task = task_now();
+	char s[30];
+
+	cons_putstr0(cons, "\nINT 0C: \n Stack Exception.\n");
+	sprintf(s, "EIP = %x\n", esp[11]);
+	cons_putstr0(cons, s);
+	return &(task->tss.esp0);
 }

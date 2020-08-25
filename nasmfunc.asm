@@ -4,12 +4,12 @@ GLOBAL	io_out8, io_out16, io_out32
 GLOBAL	io_load_eflags, io_store_eflags
 GLOBAL	load_cr0, store_cr0
 GLOBAL	load_gdtr, load_idtr
-GLOBAL	asm_inthandler20, asm_inthandler21, asm_inthandler27, asm_inthandler2c
+GLOBAL	asm_inthandler0c, asm_inthandler0d, asm_inthandler20, asm_inthandler21, asm_inthandler27, asm_inthandler2c
 GLOBAL	memtest_sub
-GLOBAL	load_tr, farjmp, farcall
-GLOBAL	asm_hrb_api
+GLOBAL	load_tr, farjmp, farcall, start_app
+GLOBAL	asm_hrb_api, asm_end_app
 
-EXTERN	inthandler20, inthandler21, inthandler27, inthandler2c
+EXTERN	inthandler0c, inthandler0d, inthandler20, inthandler21, inthandler27, inthandler2c
 EXTERN	hrb_api
 
 io_hlt:
@@ -95,6 +95,50 @@ load_idtr:
 	MOV		[ESP + 6], AX
 	LIDT	[ESP + 6]
 	RET
+
+asm_inthandler0c:
+	STI
+
+	PUSH	ES
+	PUSH	DS
+	PUSHAD
+	MOV		EAX, ESP
+	PUSH	EAX
+	MOV		AX, SS
+	MOV		DS, AX
+	MOV		ES, AX
+	CALL	inthandler0c
+	CMP		EAX, 0
+	JNE		asm_end_app			; end when illegal access
+
+	POP		EAX
+	POPAD
+	POP		DS
+	POP		ES
+	ADD		ESP, 4
+	IRETD
+
+asm_inthandler0d:
+	STI
+
+	PUSH	ES
+	PUSH	DS
+	PUSHAD
+	MOV		EAX, ESP
+	PUSH	EAX
+	MOV		AX, SS
+	MOV		DS, AX
+	MOV		ES, AX
+	CALL	inthandler0d
+	CMP		EAX, 0
+	JNE		asm_end_app			; end when illegal access
+
+	POP		EAX
+	POPAD
+	POP		DS
+	POP		ES
+	ADD		ESP, 4
+	IRETD
 
 asm_inthandler20:
 	PUSH	ES
@@ -207,12 +251,56 @@ farcall:
 	CALL FAR	[ESP + 4]
 	RET
 
+start_app:
+	PUSHAD
+	MOV		EAX, [ESP + 36]		; EIP of app
+	MOV		ECX, [ESP + 40]		; CS of app
+	MOV		EDX, [ESP + 44]		; ESP of app
+	MOV		EBX, [ESP + 48]		; DS/SS of app
+	MOV		EBP, [ESP + 52]		; tss.esp0
+	MOV		[EBP], ESP			; ESP of OS
+	MOV		[EBP + 4], SS		; SS of OS
+
+	MOV		ES, BX
+	MOV		DS, BX
+	MOV		FS, BX
+	MOV		GS, BX
+
+	; set stack to go to app via RETF
+	OR		ECX, 3
+	OR		EBX, 3
+	PUSH	EBX
+	PUSH	EDX
+	PUSH	ECX
+	PUSH	EAX
+	RETF
+
 asm_hrb_api:
 	STI
-	PUSHAD	; for recovery
-	PUSHAD	; for hrb_api
+
+	; set OS segment
+	PUSH	DS
+	PUSH	ES
+	PUSHAD					; for recovery
+	PUSHAD					; for hrb_api
+	MOV		AX, SS
+	MOV		ES, AX			; copy OS segment
+	MOV		DS, AX			; copy OS segment
+
 	CALL	hrb_api
+
+	; reset segment
+	CMP		EAX, 0
+	JNE		asm_end_app
 	ADD		ESP, 32
 	POPAD
-	POPAD
+	POP		ES
+	POP		DS
 	IRETD
+
+asm_end_app:
+	; EAX is addr of tss.esp
+	MOV		ESP, [EAX]
+	MOV		DWORD	[EAX + 4], 0
+	POPAD
+	RET						; to cmd_app

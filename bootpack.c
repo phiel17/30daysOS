@@ -138,9 +138,6 @@ void HariMain(void){
 			io_sti();
 
 			if(256 <= d && d < 512) {	// keyboard
-				// sprintf(s, "%x", d - 256);
-				// putfonts8_asc_sht(sheet_back, 0, 16, COL8_FFFFFF, COL8_008484, s, 2);
-
 				s[0] = (d < 0x80 + 256)? keytable[key_shift][d - 256] : 0;
 				if ('A' <= s[0] && s[0] <= 'Z' && ((!(key_leds & 4) && !key_shift) || ((key_leds & 4) && key_shift))) {
 					s[0] += 0x20;
@@ -186,6 +183,14 @@ void HariMain(void){
 					if (key_to != 0) {
 						fifo32_put(&task_cons->fifo, 10 + 256);
 					}
+				}
+				if (d == 256 + 0x3b && key_shift && task_cons->tss.ss0) {	// shift + f1 to terminate
+					struct CONSOLE* cons = (struct CONSOLE*) *((int*) 0x0fec);
+					cons_putstr0(cons, "\nBreak(key): \n");
+					io_cli();
+					task_cons->tss.eax = (int) &(task_cons->tss.esp0);
+					task_cons->tss.eip = (int) asm_end_app;
+					io_sti();
 				}
 
 				if (d == 256+ 0x2a) {	// left shift on
