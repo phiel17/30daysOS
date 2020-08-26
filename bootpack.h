@@ -71,6 +71,7 @@ struct SHEET {
 	unsigned char *buf;
 	int bxsize, bysize, vx0, vy0, col_transparent, height, flags;
 	struct SHEETCTL *ctl;
+	struct TASK *task;
 };
 struct SHEETCTL {
 	unsigned char *vram, *map;
@@ -241,6 +242,7 @@ void make_windowtitle8(unsigned char *buf, int xsize, char *title, char act);
 struct CONSOLE {
 	struct SHEET *sheet;
 	int cur_x, cur_y, cur_c;
+	struct TIMER *timer;
 };
 void console_task(struct SHEET *sheet, unsigned int memtotal);
 void cons_newline(struct CONSOLE *cons);

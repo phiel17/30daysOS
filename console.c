@@ -165,6 +165,14 @@ int cons_cmd_app(struct CONSOLE *cons, int *fat, char *cmdline) {
 			}
 
 			start_app(0x1b, 1003 * 8, 64 * 1024, 1004 * 8, &(task->tss.esp0));
+
+			struct SHEETCTL* sheetctl = (struct SHEETCTL *) *((int *) 0x0fe4);
+			for (int i = 0; i < MAX_SHEETS; i++) {
+				struct SHEET* sheet = &(sheetctl->sheets0[i]);
+				if (sheet->flags && sheet->task == task) {
+					sheet_free(sheet);
+				}
+			}
 			memman_free_4k(memman, (int)q, segsize);
 		} else {
 			cons_putstr0(cons, ".hrb file format error.\n");
@@ -208,9 +216,9 @@ void console_task(struct SHEET* sheet, unsigned int memtotal) {
 
 	int fifobuf[128];
 	fifo32_init(&task->fifo, 128, fifobuf, task);
-	struct TIMER* timer = timer_alloc();
-	timer_init(timer, &task->fifo, 1);
-	timer_settime(timer, 50);
+	cons.timer = timer_alloc();
+	timer_init(cons.timer, &task->fifo, 1);
+	timer_settime(cons.timer, 50);
 
 	int *fat = (int *) memman_alloc_4k(memman, 4 * 2880);
 	file_readfat(fat, (unsigned char *) (ADDR_DISKIMG + 0x000200));
@@ -229,17 +237,17 @@ void console_task(struct SHEET* sheet, unsigned int memtotal) {
 			io_sti();
 			if (d == 0 || d == 1) {		// cursor blink
 				if (d) {
-					timer_init(timer, &task->fifo, 0);
+					timer_init(cons.timer, &task->fifo, 0);
 					if (cons.cur_c >= 0) {
 						cons.cur_c = COL8_FFFFFF;
 					}
 				} else {
-					timer_init(timer, &task->fifo, 1);
+					timer_init(cons.timer, &task->fifo, 1);
 					if (cons.cur_c >= 0) {
 						cons.cur_c = COL8_000000;
 					}
 				}
-				timer_settime(timer, 50);
+				timer_settime(cons.timer, 50);
 			}
 			if (d == 2) {	// cursor on
 				cons.cur_c = COL8_FFFFFF;
@@ -275,6 +283,53 @@ void console_task(struct SHEET* sheet, unsigned int memtotal) {
 	}
 }
 
+void hrb_api_linewin(struct SHEET *sheet, int x0, int y0, int x1, int y1, int col) {
+	int dx = x1 - x0;
+	int dy = y1 - y0;
+	int x = x0 << 10;
+	int y = y0 << 10;
+	if (dx < 0) {
+		dx = -dx;
+	}
+	if (dy < 0) {
+		dy = -dy;
+	}
+
+	int len;
+	if (dx >= dy) {
+		len = dx + 1;
+		if (x0 > x1) {
+			dx = -1024;
+		} else {
+			dx = 1024;
+		}
+		if (y0 <= y1) {
+			dy = ((y1 - y0 + 1) << 10) / len;
+		} else {
+			dy = ((y1 - y0 - 1) << 10) / len;
+		}
+	} else {
+		len = dy + 1;
+		if (y0 > y1) {
+			dy = -1024;
+		} else {
+			dy = 1024;
+		}
+		if (x0 <= x1) {
+			dx = ((x1 - x0 + 1) << 10) / len;
+		} else {
+			dx = ((x1 - x0 - 1) << 10) / len;
+		}
+	}
+
+	for (int i = 0; i < len; i++) {
+		sheet->buf[(y >> 10) * sheet->bxsize + (x >> 10)] = col;
+		x += dx;
+		y += dy;
+	}
+	return;
+}
+
 int* hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax) {
 	int ds_base = *((int *) 0xfe8);
 	struct TASK* task = task_now();
@@ -285,29 +340,90 @@ int* hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int 
 
 	char s[12];
 
-	if (edx == 1) {
+	if (edx == 1) {			// console char
 		cons_putchar(cons, eax & 0xff, 1);
-	} else if (edx == 2) {
+	} else if (edx == 2) {	// console str
 		cons_putstr0(cons, (char*) ebx + ds_base);
-	} else if (edx == 3) {
+	} else if (edx == 3) {	// console str
 		cons_putstr1(cons, (char*) ebx + ds_base, ecx);
-	} else if (edx == 4) {
+	} else if (edx == 4) {	// exit
 		return &(task->tss.esp0);
-	} else if (edx == 5) {
+	} else if (edx == 5) {	// make window
 		struct SHEET *sheet = sheet_alloc(sheetctl);
+		sheet->task = task;
 		sheet_setbuf(sheet, (char *)ebx + ds_base, esi, edi, eax);
 		make_window8((char *)ebx + ds_base, esi, edi, (char *)ecx + ds_base, 0);
 		sheet_slide(sheet, 100, 50);
 		sheet_updown(sheet, 3);
 		reg[7] = (int)sheet;
-	} else if (edx == 6) {
-		struct SHEET *sheet = (struct SHEET *) ebx;
+	} else if (edx == 6) {	// draw string
+		struct SHEET *sheet = (struct SHEET *) (ebx & 0xfffffffe);
 		putfonts8_asc(sheet->buf, sheet->bxsize, esi, edi, eax, (char *) ebp + ds_base);
-		sheet_refresh(sheet, esi, edi, esi + ecx * 8, edi + 16);
-	} else if (edx == 7) {
-		struct SHEET *sheet = (struct SHEET *) ebx;
+		if (!(ebx & 1)) {
+			sheet_refresh(sheet, esi, edi, esi + ecx * 8, edi + 16);
+		}
+	} else if (edx == 7) {	// draw box
+		struct SHEET *sheet = (struct SHEET *) (ebx & 0xfffffffe);
 		boxfill8(sheet->buf, sheet->bxsize, ebp, eax, ecx, esi, edi);
-		sheet_refresh(sheet, eax, ecx, esi + 1, edi + 1);
+		if (!(ebx & 1)) {
+			sheet_refresh(sheet, eax, ecx, esi + 1, edi + 1);
+		}
+	} else if (edx == 8) {	// memalloc init
+		memman_init((struct MEMMAN*) (ebx + ds_base));
+		ecx &= 0xfffffff0;
+		memman_free_4k((struct MEMMAN *) (ebx + ds_base), eax, ecx);
+	} else if (edx == 9) {	// memalloc alloc
+		ecx = (ecx + 0x0f) & 0xfffffff0;
+		reg[7] = memman_alloc_4k((struct MEMMAN *) (ebx + ds_base), ecx);
+	} else if (edx == 10) {	// memalloc free
+		ecx = (ecx + 0x0f) & 0xfffffff0;
+		memman_free_4k((struct MEMMAN *) (ebx + ds_base), eax, ecx);
+	} else if (edx == 11) {
+		struct SHEET *sheet = (struct SHEET *) (ebx & 0xfffffffe);
+		sheet->buf[esi + edi * sheet->bxsize] = eax;
+		if (!(ebx & 1)) {
+			sheet_refresh(sheet, esi, edi, esi + 1, edi + 1);
+		}
+	} else if (edx == 12) {
+		struct SHEET *sheet = (struct SHEET *) (ebx & 0xfffffffe);
+		sheet_refresh(sheet, eax, ecx, esi, edi);
+	} else if (edx == 13) {
+		struct SHEET *sheet = (struct SHEET *) (ebx & 0xfffffffe);
+		hrb_api_linewin(sheet, eax, ecx, esi, edi, ebp);
+		if (!(ebx & 1)) {
+			sheet_refresh(sheet, eax, ecx, esi + 1, edi + 1);
+		}
+	} else if (edx == 14) {
+		sheet_free((struct SHEET *) ebx);
+	} else if (edx == 15) {
+		for (;;) {
+			io_cli();
+			if (!fifo32_status(&task->fifo)) {
+				if (eax) {
+					task_sleep(task);
+				} else {
+					io_sti();
+					reg[7] = -1;
+					return 0;
+				}
+			}
+			int d = fifo32_get(&task->fifo);
+			io_sti();
+			if (d <= 1) {
+				timer_init(cons->timer, &task->fifo, 1);
+				timer_settime(cons->timer, 50);
+			}
+			if (d == 2) {
+				cons->cur_c = COL8_FFFFFF;
+			}
+			if (d == 3) {
+				cons->cur_c = -1;
+			}
+			if (256 <= d && d < 512) {
+				reg[7] = d - 256;
+				return 0;
+			}
+		}
 	}
 	return 0;
 }
