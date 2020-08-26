@@ -121,7 +121,9 @@ void HariMain(void){
 	// putfonts8_asc_sht(sheet_back, 0, 32, COL8_FFFFFF, COL8_008484, s, 40);
 
 	int key_to = 0, key_shift = 0;
+	int mmx = -1, mmy = -1;
 	int cursor_x = 8, cursor_c = COL8_FFFFFF;
+	struct SHEET* sheet;
 	for (;;) {
 		if (fifo32_status(&keycmd) > 0 && keycmd_wait < 0) {
 			keycmd_wait = fifo32_get(&keycmd);
@@ -193,6 +195,9 @@ void HariMain(void){
 					task_cons->tss.eip = (int) asm_end_app;
 					io_sti();
 				}
+				if (d == 256 + 0x57 && sheetctl->top > 2) {
+					sheet_updown(sheetctl->sheets[1], sheetctl->top - 1);
+				}
 
 				if (d == 256+ 0x2a) {	// left shift on
 					key_shift |= 1;
@@ -234,18 +239,6 @@ void HariMain(void){
 				sheet_refresh(sheet_win, cursor_x, 28, cursor_x + 8, 44);
 			} else if (512 <= d && d < 768) {	// mouse
 				if (mouse_decode(&mdec, d - 512) == 1) {
-					// sprintf(s, "[lcr %d %d]", mdec.x, mdec.y);
-					// if ((mdec.btn & 0x01)){
-					// 	s[1] = 'L';
-					// }
-					// if ((mdec.btn & 0x02)){
-					// 	s[3] = 'R';
-					// }
-					// if ((mdec.btn & 0x04)){
-					// 	s[2] = 'C';
-					// }
-					// putfonts8_asc_sht(sheet_back, 32, 16, COL8_FFFFFF, COL8_008484, s, 15);
-
 					mx += mdec.x;
 					my += mdec.y;
 					if (mx < 0) {
@@ -260,12 +253,44 @@ void HariMain(void){
 					if (my > binfo->scrny - 1) {
 						my = binfo->scrny - 1;
 					}
-					// sprintf(s, "(%d, %d)", mx, my);
-					// putfonts8_asc_sht(sheet_back, 0, 0, COL8_FFFFFF, COL8_008484, s, 10);
 					sheet_slide(sheet_mouse, mx, my);
 
 					if ((mdec.btn & 0x01)) {
-						sheet_slide(sheet_win, mx - 80, my - 8);
+						if (mmx < 0) {
+							for (int i = sheetctl->top - 1; i > 0; i--) {
+								sheet = sheetctl->sheets[i];
+								int x = mx - sheet->vx0;
+								int y = my - sheet->vy0;
+								if (0 <= x && x < sheet->bxsize && 0 <= y && y < sheet->bysize) {
+									if (sheet->buf[y * sheet->bxsize + x] != sheet->col_transparent) {
+										sheet_updown(sheet, sheetctl->top - 1);
+
+										if (sheet->bxsize - 21 <= x && x < sheet->bxsize - 5 && 5 <= y && y < 19) {
+											if (sheet->task != 0) {
+												cons = (struct CONSOLE *) *((int *) 0x0fec);
+												cons_putstr0(cons, "\nBreak(mouse):\n");
+												io_cli();
+												task_cons->tss.eax = (int) &(task_cons->tss.esp0);
+												task_cons->tss.eip = (int) asm_end_app;
+												io_sti();
+											}
+										} else if (3 <= x && x < sheet->bxsize - 3 && 3 <= y && y < 21) {
+											mmx = mx;
+											mmy = my;
+										}
+										break;
+									}
+								}
+							}
+						} else {
+							int x = mx - mmx;
+							int y = my - mmy;
+							sheet_slide(sheet, sheet->vx0 + x, sheet->vy0 + y);
+							mmx = mx;
+							mmy = my;
+						}
+					} else {
+						mmx = -1;
 					}
 				}
 			} else if (d == 1 || d == 0) {
