@@ -2,6 +2,32 @@
 
 #define KEYCMD_LED		(0xed)
 
+int keywin_off(struct SHEET *key_win, struct SHEET* sheet_win, int cur_c, int cur_x) {
+	change_wtitle8(key_win, 0);
+	if (key_win == sheet_win) {
+		cur_c = -1;
+		boxfill8(sheet_win->buf, sheet_win->bxsize, COL8_FFFFFF, cur_x, 28, cur_x + 7, 43);
+		sheet_refresh(sheet_win, cur_x, 28, cur_x + 8, 44);
+	} else {
+		if (key_win->flags & 0x20) {
+			fifo32_put(&key_win->task->fifo, 3);
+		}
+	}
+	return cur_c;
+}
+
+int keywin_on(struct SHEET *key_win, struct SHEET* sheet_win, int cur_c) {
+	change_wtitle8(key_win, 1);
+	if (key_win == sheet_win) {
+		cur_c = COL8_000000;
+	} else {
+		if (key_win->flags & 0x20) {
+			fifo32_put(&key_win->task->fifo, 2);
+		}
+	}
+	return cur_c;
+}
+
 void HariMain(void){
 	struct BOOTINFO *binfo = (struct BOOTINFO*) ADDR_BOOTINFO;
 	struct MOUSE_DEC mdec;
@@ -15,7 +41,7 @@ void HariMain(void){
 	struct FIFO32 fifo, keycmd;
 	struct TIMER *timer;
 
-	struct TASK *task_a, *cons;
+	struct TASK *task_a;
 
 	static char keytable[2][0x80] = {
 		{
@@ -44,7 +70,7 @@ void HariMain(void){
 	init_pic();
 	io_sti();
 
-	fifo32_init(&fifo, 32, fifobuf, 0);
+	fifo32_init(&fifo, 128, fifobuf, 0);
 	init_pit();
 	init_keyboard(&fifo, 256);
 	enable_mouse(&fifo, 512, &mdec);
@@ -60,13 +86,13 @@ void HariMain(void){
 	memman_free(memman, 0x00001000, 0x0009e000);
 	memman_free(memman, 0x00400000, memtotal - 0x00400000);
 
-	task_a = task_init(memman);
-	fifo.task = task_a;
-	task_run(task_a, 1, 2);
-
 	init_palette();
 	sheetctl = sheetctl_init(memman, binfo->vram, binfo->scrnx, binfo->scrny);
 	*((int*) 0x0fe4) = (int) sheetctl;
+
+	task_a = task_init(memman);
+	fifo.task = task_a;
+	task_run(task_a, 1, 2);
 
 	sheet_back = sheet_alloc(sheetctl);
 	buf_sheet_back = (unsigned char *)memman_alloc_4k(memman, binfo->scrnx * binfo->scrny);
@@ -101,6 +127,8 @@ void HariMain(void){
 	task_cons->tss.gs = 1 * 8;
 	*((int *) (task_cons->tss.esp + 4)) = (int) sheet_cons;
 	*((int *) (task_cons->tss.esp + 8)) = (int) memtotal;
+	sheet_cons->task = task_cons;
+	sheet_cons->flags |= 0x20;		// cursor on
 	task_run(task_cons, 2, 2);
 
 	sheet_slide(sheet_back, 0, 0);
@@ -117,13 +145,10 @@ void HariMain(void){
 	timer_init(timer, &fifo, 1);
 	timer_settime(timer, 50);
 
-	// sprintf(s, "memory %d MB  free: %d KB", memtotal / (1024 * 1024), memman_total(memman) / 1024);
-	// putfonts8_asc_sht(sheet_back, 0, 32, COL8_FFFFFF, COL8_008484, s, 40);
-
-	int key_to = 0, key_shift = 0;
+	int key_shift = 0;
 	int mmx = -1, mmy = -1;
 	int cursor_x = 8, cursor_c = COL8_FFFFFF;
-	struct SHEET* sheet;
+	struct SHEET *sheet = 0, *key_win = sheet_win;
 	for (;;) {
 		if (fifo32_status(&keycmd) > 0 && keycmd_wait < 0) {
 			keycmd_wait = fifo32_get(&keycmd);
@@ -140,22 +165,29 @@ void HariMain(void){
 			int d = fifo32_get(&fifo);
 			io_sti();
 
+			if (key_win->flags == 0) {	// window closed
+				key_win = sheetctl->sheets[sheetctl->top - 1];
+				cursor_c = keywin_on(key_win, sheet_win, cursor_c);
+			}
+
 			if(256 <= d && d < 512) {	// keyboard
 				s[0] = (d < 0x80 + 256)? keytable[key_shift][d - 256] : 0;
 				if ('A' <= s[0] && s[0] <= 'Z' && ((!(key_leds & 4) && !key_shift) || ((key_leds & 4) && key_shift))) {
 					s[0] += 0x20;
 				}
 				if (s[0] != 0) {
-					if (key_to == 0){
-						s[1] = 0;
-						putfonts8_asc_sht(sheet_win, cursor_x, 28, COL8_000000, COL8_FFFFFF, s, 1);
-						cursor_x += 8;
+					if (key_win == sheet_win){
+						if (cursor_x < sheet_win->bxsize - 16) {
+							s[1] = 0;
+							putfonts8_asc_sht(sheet_win, cursor_x, 28, COL8_000000, COL8_FFFFFF, s, 1);
+							cursor_x += 8;
+						}
 					} else {
 						fifo32_put(&task_cons->fifo, s[0] + 256);
 					}
 				}
 				if (d == 256 + 0x0e) {	// backspace
-					if (key_to == 0){
+					if (key_win == sheet_win){
 						if (cursor_x > 8) {
 							putfonts8_asc_sht(sheet_win, cursor_x, 28, COL8_000000, COL8_FFFFFF, " ", 1);
 							cursor_x -= 8;
@@ -165,25 +197,16 @@ void HariMain(void){
 					}
 				}
 				if (d == 256 + 0x0f) {	// tab
-					if (key_to == 0) {
-						key_to = 1;
-						make_windowtitle8(buf_sheet_win, sheet_win->bxsize, "task_a", 0);
-						make_windowtitle8(buf_sheet_cons, sheet_cons->bxsize, "console", 1);
-						cursor_c = -1;
-						boxfill8(sheet_win->buf, sheet_win->bxsize, COL8_FFFFFF, cursor_x, 28, cursor_x + 7, 43);
-						fifo32_put(&task_cons->fifo, 2);
-					} else {
-						key_to = 0;
-						make_windowtitle8(buf_sheet_win, sheet_win->bxsize, "task_a", 1);
-						make_windowtitle8(buf_sheet_cons, sheet_cons->bxsize, "console", 0);
-						cursor_c = COL8_000000;
-						fifo32_put(&task_cons->fifo, 3);
+					cursor_c = keywin_off(key_win, sheet_win, cursor_c, cursor_x);
+					int j = key_win->height - 1;
+					if (j == 0) {
+						j = sheetctl->top - 1;
 					}
-					sheet_refresh(sheet_win, 0, 0, sheet_win->bxsize, 21);
-					sheet_refresh(sheet_cons, 0, 0, sheet_cons->bxsize, 21);
+					key_win = sheetctl->sheets[j];
+					cursor_c = keywin_on(key_win, sheet_win, cursor_c);
 				}
-				if (d == 256 + 0x1c) {
-					if (key_to != 0) {
+				if (d == 256 + 0x1c) {	// enter
+					if (key_win != sheet_win) {
 						fifo32_put(&task_cons->fifo, 10 + 256);
 					}
 				}
@@ -265,9 +288,15 @@ void HariMain(void){
 									if (sheet->buf[y * sheet->bxsize + x] != sheet->col_transparent) {
 										sheet_updown(sheet, sheetctl->top - 1);
 
+										if (sheet != key_win) {
+											cursor_c = keywin_off(key_win, sheet_win, cursor_c, cursor_x);
+											key_win = sheet;
+											cursor_c = keywin_on(key_win, sheet_win, cursor_c);
+										}
+
 										if (sheet->bxsize - 21 <= x && x < sheet->bxsize - 5 && 5 <= y && y < 19) {
-											if (sheet->task != 0) {
-												cons = (struct CONSOLE *) *((int *) 0x0fec);
+											if (sheet->flags & 0x10) {		// is window made by app
+												struct CONSOLE* cons = (struct CONSOLE *) *((int *) 0x0fec);
 												cons_putstr0(cons, "\nBreak(mouse):\n");
 												io_cli();
 												task_cons->tss.eax = (int) &(task_cons->tss.esp0);

@@ -61,6 +61,28 @@ void make_window8(unsigned char *buf, int xsize, int ysize, char *title, char ac
 	return;
 }
 
+void change_wtitle8(struct SHEET *sheet, char act) {
+	int tc_new = (act)? COL8_FFFFFF : COL8_C6C6C6;
+	int tbc_new = (act)? COL8_000084 : COL8_848484;
+	int tc_old = (act)? COL8_C6C6C6 : COL8_FFFFFF;
+	int tbc_old = (act)? COL8_848484 : COL8_000084;
+
+	int xsize = sheet->bxsize;
+
+	for (int y = 3; y <= 20; y++) {
+		for (int x = 3; x <= xsize - 4; x++) {
+			char c = sheet->buf[y * xsize + x];
+			if (c == tc_old && x <= xsize - 22) {
+				c = tc_new;
+			} else if (c == tbc_old) {
+				c = tbc_new;
+			}
+			sheet->buf[y * xsize + x] = c;
+		}
+	}
+	sheet_refresh(sheet, 3, 3, xsize, 21);
+}
+
 void make_textbox8(struct SHEET *sht, int x0, int y0, int sx, int sy, int c)
 {
 	int x1 = x0 + sx, y1 = y0 + sy;

@@ -169,10 +169,11 @@ int cons_cmd_app(struct CONSOLE *cons, int *fat, char *cmdline) {
 			struct SHEETCTL* sheetctl = (struct SHEETCTL *) *((int *) 0x0fe4);
 			for (int i = 0; i < MAX_SHEETS; i++) {
 				struct SHEET* sheet = &(sheetctl->sheets0[i]);
-				if (sheet->flags && sheet->task == task) {
+				if ((sheet->flags & 0x11) == 0x11 && sheet->task == task) {
 					sheet_free(sheet);
 				}
 			}
+			timer_cancelall(&task->fifo);
 			memman_free_4k(memman, (int)q, segsize);
 		} else {
 			cons_putstr0(cons, ".hrb file format error.\n");
@@ -351,6 +352,7 @@ int* hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int 
 	} else if (edx == 5) {	// make window
 		struct SHEET *sheet = sheet_alloc(sheetctl);
 		sheet->task = task;
+		sheet->flags |= 0x10;
 		sheet_setbuf(sheet, (char *)ebx + ds_base, esi, edi, eax);
 		make_window8((char *)ebx + ds_base, esi, edi, (char *)ecx + ds_base, 0);
 		sheet_slide(sheet, 100, 50);
@@ -419,11 +421,20 @@ int* hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int 
 			if (d == 3) {
 				cons->cur_c = -1;
 			}
-			if (256 <= d && d < 512) {
+			if (256 <= d) {
 				reg[7] = d - 256;
 				return 0;
 			}
 		}
+	} else if (edx == 16) {
+		reg[7] = (int) timer_alloc();
+		((struct TIMER *) reg[7])->flags2 = 1;
+	} else if (edx == 17) {
+		timer_init((struct TIMER *) ebx, &task->fifo, eax + 256);
+	} else if (edx == 18) {
+		timer_settime((struct TIMER *) ebx, eax);
+	} else if (edx == 19) {
+		timer_free((struct TIMER *) ebx);
 	}
 	return 0;
 }

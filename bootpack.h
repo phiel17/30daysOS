@@ -161,7 +161,8 @@ void inthandler27(int *esp);
 #define MAX_TIMER	(500)
 struct TIMER {
 	struct TIMER *next;
-	unsigned int timeout, flags;
+	unsigned int timeout;
+	char flags, flags2;
 	struct FIFO32 *fifo;
 	int data;
 };
@@ -177,6 +178,8 @@ struct TIMER *timer_alloc(void);
 void timer_free(struct TIMER *timer);
 void timer_init(struct TIMER *timer, struct FIFO32 *fifo, int data);
 void timer_settime(struct TIMER *timer, unsigned int timeout);
+int timer_cancel(struct TIMER *timer);
+void timer_cancelall(struct FIFO32* fifo);
 
 // keyboard.c
 #define PORT_KEYDAT				(0x0060)
@@ -236,6 +239,7 @@ void task_sleep(struct TASK *task);
 // window.c
 void make_window8(unsigned char *buf, int xsize, int ysize, char *title, char act);
 void make_textbox8(struct SHEET *sht, int x0, int y0, int sx, int sy, int c);
+void change_wtitle8(struct SHEET *sheet, char act);
 void make_windowtitle8(unsigned char *buf, int xsize, char *title, char act);
 
 // console.c

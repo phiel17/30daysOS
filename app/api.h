@@ -16,3 +16,8 @@ void api_refreshwin(int win, int x0, int y0, int x1, int y1);
 void api_initmalloc();
 char* api_malloc(int size);
 void api_free(char *addr, int size);
+
+int api_timeralloc();
+void api_timerinit(int timer, int data);
+void api_timerset(int timer, int time);
+void api_timerfree(int timer);
