@@ -21,3 +21,5 @@ int api_timeralloc();
 void api_timerinit(int timer, int data);
 void api_timerset(int timer, int time);
 void api_timerfree(int timer);
+
+void api_beep(int tone);

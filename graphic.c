@@ -20,14 +20,26 @@ void init_palette(void){
 		0x84, 0x84, 0x84
 	};
 	set_palette(0, 15, table_rgb);
+
+	unsigned char table2[216 * 3];
+	for (int b = 0; b < 6; b++) {
+		for (int g = 0; g < 6; g++) {
+			for (int r = 0; r < 6; r++) {
+				table2[(r + g * 6 + b * 36) * 3 + 0] = r * 51;
+				table2[(r + g * 6 + b * 36) * 3 + 1] = g * 51;
+				table2[(r + g * 6 + b * 36) * 3 + 2] = b * 51;
+			}
+		}
+	}
+	set_palette(16, 231, table2);
 	return;
 }
 
 void set_palette(int start, int end, unsigned char *rgb) {
 	int eflags = io_load_eflags();
 	io_cli();
-	io_out8(0x038, start);
-	for (int i = 0; i <= end; i++) {
+	io_out8(0x03c8, start);
+	for (int i = start; i <= end; i++) {
 		io_out8(0x03c9, rgb[0] / 4);
 		io_out8(0x03c9, rgb[1] / 4);
 		io_out8(0x03c9, rgb[2] / 4);

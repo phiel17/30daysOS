@@ -149,22 +149,22 @@ int cons_cmd_app(struct CONSOLE *cons, int *fat, char *cmdline) {
 	if (finfo) {
 		char *p = (char*) memman_alloc_4k(memman, finfo->size);
 		file_loadfile(finfo->clustno, finfo->size, p, fat, (char *) (ADDR_DISKIMG + 0x003e00));
-		if (finfo->size >= 8 && !strncmp(p + 4, "Hari", 4)) {
+		if (finfo->size >= 36 && !strncmp(p + 4, "Hari", 4) && *p == 0x00) {
 			int segsize = *((int *) (p + 0x0000));
 			int esp = *((int *) (p + 0x000c));
 			int datsize = *((int *) (p + 0x0010));
 			int dathrb = *((int *) (p + 0x0014));
-			char *q = (char*) memman_alloc_4k(memman, 64 * segsize);
-			*((int *) 0xfe8) = (int) q;
+			char *q = (char*) memman_alloc_4k(memman, segsize);
+			task->ds_base = (int) q;
 
-			set_segmdesc(gdt + 1003, finfo->size - 1, (int)p, AR_CODE32_ER + 0x60);
-			set_segmdesc(gdt + 1004, segsize - 1, (int) q, AR_DATA32_RW + 0x60);
+			set_segmdesc(gdt + task->sel / 8 + 1000, finfo->size - 1, (int)p, AR_CODE32_ER + 0x60);
+			set_segmdesc(gdt + task->sel / 8 + 2000, segsize - 1, (int) q, AR_DATA32_RW + 0x60);
 
 			for (int i = 0; i < datsize; i++) {
 				q[esp + i] = p[dathrb + i];
 			}
 
-			start_app(0x1b, 1003 * 8, 64 * 1024, 1004 * 8, &(task->tss.esp0));
+			start_app(0x1b, task->sel + 1000 * 8, esp, task->sel + 2000 * 8, &(task->tss.esp0));
 
 			struct SHEETCTL* sheetctl = (struct SHEETCTL *) *((int *) 0x0fe4);
 			for (int i = 0; i < MAX_SHEETS; i++) {
@@ -212,11 +212,8 @@ void console_task(struct SHEET* sheet, unsigned int memtotal) {
 	cons.cur_x = 8;
 	cons.cur_y = 28;
 	cons.cur_c = -1;
+	task->cons = &cons;
 
-	*((int *) 0x0fec) = (int) &cons;
-
-	int fifobuf[128];
-	fifo32_init(&task->fifo, 128, fifobuf, task);
 	cons.timer = timer_alloc();
 	timer_init(cons.timer, &task->fifo, 1);
 	timer_settime(cons.timer, 50);
@@ -332,9 +329,9 @@ void hrb_api_linewin(struct SHEET *sheet, int x0, int y0, int x1, int y1, int co
 }
 
 int* hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax) {
-	int ds_base = *((int *) 0xfe8);
 	struct TASK* task = task_now();
-	struct CONSOLE *cons = (struct CONSOLE *) *((int *) 0x0fec);
+	int ds_base = task->ds_base;
+	struct CONSOLE *cons = task->cons;
 	struct SHEETCTL *sheetctl = (struct SHEETCTL *) *((int *) 0x0fe4);
 	int *reg = &eax + 1;
 	// reg[i]: EDI, ESI, EBP, ESP, EBX, EDX, ECX, EAX
@@ -355,8 +352,8 @@ int* hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int 
 		sheet->flags |= 0x10;
 		sheet_setbuf(sheet, (char *)ebx + ds_base, esi, edi, eax);
 		make_window8((char *)ebx + ds_base, esi, edi, (char *)ecx + ds_base, 0);
-		sheet_slide(sheet, 100, 50);
-		sheet_updown(sheet, 3);
+		sheet_slide(sheet, (sheetctl->xsize - esi) / 2, (sheetctl->ysize - edi) / 2);
+		sheet_updown(sheet, sheetctl->top);
 		reg[7] = (int)sheet;
 	} else if (edx == 6) {	// draw string
 		struct SHEET *sheet = (struct SHEET *) (ebx & 0xfffffffe);
@@ -373,13 +370,13 @@ int* hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int 
 	} else if (edx == 8) {	// memalloc init
 		memman_init((struct MEMMAN*) (ebx + ds_base));
 		ecx &= 0xfffffff0;
-		memman_free_4k((struct MEMMAN *) (ebx + ds_base), eax, ecx);
+		memman_free((struct MEMMAN *) (ebx + ds_base), eax, ecx);
 	} else if (edx == 9) {	// memalloc alloc
 		ecx = (ecx + 0x0f) & 0xfffffff0;
-		reg[7] = memman_alloc_4k((struct MEMMAN *) (ebx + ds_base), ecx);
+		reg[7] = memman_alloc((struct MEMMAN *) (ebx + ds_base), ecx);
 	} else if (edx == 10) {	// memalloc free
 		ecx = (ecx + 0x0f) & 0xfffffff0;
-		memman_free_4k((struct MEMMAN *) (ebx + ds_base), eax, ecx);
+		memman_free((struct MEMMAN *) (ebx + ds_base), eax, ecx);
 	} else if (edx == 11) {
 		struct SHEET *sheet = (struct SHEET *) (ebx & 0xfffffffe);
 		sheet->buf[esi + edi * sheet->bxsize] = eax;
@@ -435,13 +432,25 @@ int* hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int 
 		timer_settime((struct TIMER *) ebx, eax);
 	} else if (edx == 19) {
 		timer_free((struct TIMER *) ebx);
+	} else if (edx == 20) {
+		if(eax == 0) {
+			int d = io_in8(0x61);
+			io_out8(0x61, d & 0x0d);
+		} else {
+			int d = 1193180000 / eax;
+			io_out8(0x43, 0xb6);
+			io_out8(0x42, d & 0xff);
+			io_out8(0x42, d >> 8);
+			d = io_in8(0x61);
+			io_out8(0x61, (d | 0x03) & 0x0f);
+		}
 	}
 	return 0;
 }
 
 int* inthandler0d(int *esp) {
-	struct CONSOLE* cons = (struct CONSOLE *) *((int*) 0x0fec);
 	struct TASK* task = task_now();
+	struct CONSOLE* cons = task->cons;
 	char s[30];
 
 	cons_putstr0(cons, "\nINT 0D: \n General Protected Exception.\n");
@@ -451,8 +460,8 @@ int* inthandler0d(int *esp) {
 }
 
 int* inthandler0c(int *esp) {
-	struct CONSOLE* cons = (struct CONSOLE *) *((int*) 0x0fec);
 	struct TASK* task = task_now();
+	struct CONSOLE* cons = task->cons;
 	char s[30];
 
 	cons_putstr0(cons, "\nINT 0C: \n Stack Exception.\n");

@@ -6,6 +6,7 @@ GLOBAL	api_openwin, api_closewin
 GLOBAL	api_putstrwin, api_boxfillwin, api_pointwin, api_linewin, api_refreshwin
 GLOBAL	api_initmalloc, api_malloc, api_free
 GLOBAL	api_timeralloc, api_timerinit, api_timerset, api_timerfree
+GLOBAL	api_beep
 
 api_end:
 	MOV		EDX, 4
@@ -159,6 +160,7 @@ api_malloc:
 	PUSH	EBX
 	MOV		EDX, 9
 	MOV		EBX, [CS:0x0020]
+	MOV		ECX, [ESP + 8]		; size
 	INT		0x40
 	POP		EBX
 	RET
@@ -167,8 +169,8 @@ api_free:
 	PUSH	EBX
 	MOV		EDX, 10
 	MOV		EBX, [CS:0x0020]
-	MOV		EAX, [ESP + 8]
-	MOV		ECX, [ESP + 12]
+	MOV		EAX, [ESP + 8]		; addr
+	MOV		ECX, [ESP + 12]		; size
 	INT		0x40
 	POP		EBX
 	RET
@@ -204,3 +206,8 @@ api_timerfree:
 	POP		EBX
 	RET
 
+api_beep:
+	MOV		EDX, 20
+	MOV		EAX, [ESP + 4]
+	INT		0x40
+	RET
