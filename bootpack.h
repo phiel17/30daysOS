@@ -215,7 +215,7 @@ struct TASK {
 	struct FIFO32 fifo;
 	struct TSS32 tss;
 	struct CONSOLE* cons;
-	int ds_base;
+	int ds_base, cons_stack;
 };
 
 struct TASKLEVEL {
@@ -230,6 +230,7 @@ struct TASKCTL {
 	struct TASKLEVEL level[MAX_TASKLEVELS];
 	struct TASK tasks0[MAX_TASKS];
 };
+extern struct TASKCTL *taskctl;
 extern struct TIMER *task_timer;
 struct TASK* task_now(void);
 struct TASK* task_init(struct MEMMAN *memman);
@@ -268,6 +269,10 @@ struct FILEINFO {
 void file_readfat(int *fat, unsigned char *img);
 void file_loadfile(int clustno, int size, char *buf, int *fat, char *img);
 struct FILEINFO *file_search(char *name, struct FILEINFO *finfo, int max);
+
+// bootpack.c
+struct SHEET *open_console(struct SHEETCTL *sheetctl, unsigned int memtotal);
+struct TASK *open_cons_task(struct SHEET *sheet, unsigned int memtotal);
 
 // myfuncs.c
 void sprintf(char *str, char *fmt, ...);

@@ -68,13 +68,37 @@ void sheet_refreshmap(struct SHEETCTL *ctl, int vx0, int vy0, int vx1, int vy1, 
 		if (bx1 > sht->bxsize) { bx1 = sht->bxsize;}
 		if (by1 > sht->bysize) { by1 = sht->bysize;}
 
-		for (int by = by0; by < by1; by++) {
-			int vy = sht->vy0 + by;
+		if (sht->col_transparent == -1) {
+			if (!(sht->vx0 & 3) && !(bx0 & 3) && !(bx1 & 3)) {
+				bx1 = (bx1 - bx0) / 4;
+				int sid4 = sid | sid << 8 | sid << 16 | sid << 24;
+				for (int by = by0; by < by1; by++) {
+					int vy = sht->vy0 + by;
+					int vx = sht->vx0 + bx0;
+					int *p = (int *)&ctl->map[vy * ctl->xsize + vx];
 
-			for (int bx = bx0; bx < bx1; bx++) {
-				int vx = sht->vx0 + bx;
-				if (sht->buf[by * sht->bxsize + bx] != sht->col_transparent) {
-					ctl->map[vy * ctl->xsize + vx] = sid;
+					for (int bx = 0; bx < bx1; bx++) {
+						p[bx] = sid4;
+					}
+				}
+			} else {
+				for (int by = by0; by < by1; by++) {
+					int vy = sht->vy0 + by;
+
+					for (int bx = bx0; bx < bx1; bx++) {
+						int vx = sht->vx0 + bx;
+						ctl->map[vy * ctl->xsize + vx] = sid;
+					}
+				}
+			}
+		} else {
+			for (int by = by0; by < by1; by++) {
+				int vy = sht->vy0 + by;
+				for (int bx = bx0; bx < bx1; bx++) {
+					int vx = sht->vx0 + bx;
+					if (sht->buf[by * sht->bxsize + bx] != sht->col_transparent) {
+						ctl->map[vy * ctl->xsize + vx] = sid;
+					}
 				}
 			}
 		}
@@ -89,6 +113,7 @@ void sheet_refreshsub(struct SHEETCTL* ctl, int vx0, int vy0, int vx1, int vy1, 
 
 	for (int h = h0; h <= h1; h++) {
 		struct SHEET *sht = ctl->sheets[h];
+		unsigned char sid = sht - ctl->sheets0;
 
 		int bx0 = vx0 - sht->vx0;
 		int by0 = vy0 - sht->vy0;
@@ -99,14 +124,51 @@ void sheet_refreshsub(struct SHEETCTL* ctl, int vx0, int vy0, int vx1, int vy1, 
 		if (bx1 > sht->bxsize) { bx1 = sht->bxsize;}
 		if (by1 > sht->bysize) { by1 = sht->bysize;}
 
-		for (int by = by0; by < by1; by++) {
-			int vy = sht->vy0 + by;
-
-			for (int bx = bx0; bx < bx1; bx++) {
+		if (!(sht->vx0 & 3)) {
+			int i = (bx0 + 3) / 4;
+			int i1 = bx1 / 4 - i;
+			int sid4 = sid | sid << 8 | sid << 16 | sid << 24;
+			for (int by = by0; by < by1; by++) {
+				int vy = sht->vy0 + by;
+				int bx;
+				for (bx = bx0; bx < bx1 && (bx & 3) != 0; bx++) {	// 前の端数を1byteずつ
+					int vx = sht->vx0 + bx;
+					if (ctl->map[vy * ctl->xsize + vx] == sid) {
+						ctl->vram[vy * ctl->xsize + vx] = sht->buf[by * sht->bxsize + bx];
+					}
+				}
 				int vx = sht->vx0 + bx;
-				unsigned char sid = sht - ctl->sheets0;
-				if (ctl->map[vy * ctl->xsize + vx] == sid) {
-					ctl->vram[vy * ctl->xsize + vx] = sht->buf[by * sht->bxsize + bx];
+				int *p = (int *) &ctl->map[vy * ctl->xsize + vx];
+				int *q = (int *) &ctl->vram[vy * ctl->xsize + vx];
+				int *r = (int *) &sht->buf[by * sht->bxsize + bx];
+				for (int i = 0; i < i1; i++) {						// 4byteずつ
+					if (p[i] == sid4) {
+						q[i] = r[i];
+					} else {
+						int bx2 = bx + i * 4;
+						vx = sht->vx0 + bx2;
+						for (int j = 0; j < 4; j++) {
+							if (ctl->map[vy * ctl->xsize + vx + j] == sid) {
+								ctl->vram[vy * ctl->xsize + vx + j] = sht->buf[by * sht->bxsize + bx2 + j];
+							}
+						}
+					}
+				}
+				for (bx += i1 * 4; bx < bx1; bx++) {			// 後ろの端数を1byteずつ
+					vx = sht->vx0 + bx;
+					if (ctl->map[vy * ctl->xsize + vx] == sid) {
+						ctl->vram[vy * ctl->xsize + vx] = sht->buf[by * sht->bxsize + bx];
+					}
+				}
+			}
+		} else {
+			for (int by = by0; by < by1; by++) {
+				int vy = sht->vy0 + by;
+				for (int bx = bx0; bx < bx1; bx++) {
+					int vx = sht->vx0 + bx;
+					if (ctl->map[vy * ctl->xsize + vx] == sid) {
+						ctl->vram[vy * ctl->xsize + vx] = sht->buf[by * sht->bxsize + bx];
+					}
 				}
 			}
 		}
