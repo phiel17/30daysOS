@@ -1,9 +1,13 @@
-int api_openwin(char *buf, int xsize, int ysize, int col_transparent, char *title);
-void api_end();
+#include "api.h"
 
 char buf[150 * 50];
 
 void app_main() {
 	int win = api_openwin(buf, 150, 50, -1, "hello");
+	for (;;) {
+		if (api_getkey(1) == 0x0a) {
+			break;
+		}
+	}
 	api_end();
 }

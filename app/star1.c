@@ -6,5 +6,10 @@ void app_main() {
 	int win = api_openwin(buf, 150, 100, -1, "star1");
 	api_boxfillwin(win, 6, 26, 143, 93, 0);
 	api_pointwin(win, 75, 59, 3);
+	for (;;) {
+		if (api_getkey(1) == 0x0a) {
+			break;
+		}
+	}
 	api_end();
 }

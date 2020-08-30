@@ -41,7 +41,7 @@ struct TASK* open_cons_task(struct SHEET* sheet, unsigned int memtotal) {
 }
 
 struct SHEET* open_console(struct SHEETCTL* sheetctl, unsigned int memtotal) {
-	const int xsize = 256, ysize = 165;
+	const int xsize = 512, ysize = 512;
 
 	struct MEMMAN *memman = (struct MEMMAN *) MEMMAN_ADDR;
 	struct SHEET *sheet = sheet_alloc(sheetctl);
@@ -225,6 +225,7 @@ void HariMain(void){
 						task->tss.eax = (int) &(task->tss.esp0);
 						task->tss.eip = (int) asm_end_app;
 						io_sti();
+						task_run(task, -1, 0);		// wake up to terminate
 					}
 				}
 				if (d == 256 + 0x3c && key_shift) {	// shift + f2 to open console
@@ -317,8 +318,13 @@ void HariMain(void){
 												task->tss.eax = (int) &(task->tss.esp0);
 												task->tss.eip = (int) asm_end_app;
 												io_sti();
+												task_run(task, -1, 0);		// wake up to terminate
 											} else {
 												struct TASK *task = sheet->task;
+												sheet_updown(sheet, -1);
+												keywin_off(key_win);
+												key_win = sheetctl->sheets[sheetctl->top - 1];
+												keywin_on(key_win);
 												io_cli();
 												fifo32_put(&task->fifo, 4);
 												io_sti();

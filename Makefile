@@ -1,53 +1,61 @@
 .PHONY: all clean app
 
 CC		= gcc
-CFLAGS	= -march=i486 -m32 -nostdlib -fno-builtin -fno-pie -no-pie -g
+CFLAGS	= -march=i486 -m32 -nostdlib -fno-builtin -fno-pie -no-pie
 MAKE	= make --no-print-directory
 
-TARGET	= haribote.img
-SRCS	= $(wildcard *.c)
-OBJS	= $(patsubst %c, %o, $(SRCS))
-APPSRCS	= $(filter-out app/a_nasm.asm, $(wildcard app/*.asm) $(wildcard app/*.c))
-APP		= $(patsubst %c, %hrb, $(patsubst %asm, %hrb, $(APPSRCS)))
+TARGET		= haribote.img
+SRCS		= $(wildcard haribote/*.c)
+OBJS		= $(patsubst %c, %o, $(SRCS))
+APPSRCS		= $(wildcard app/*.asm) $(wildcard app/*.c)
+APP			= $(patsubst %c, %hrb, $(patsubst %asm, %hrb, $(APPSRCS)))
+APPAPISRCS	= $(wildcard app/api/*.asm) $(wildcard app/api/*.c)
+APPAPIOBJS	= $(patsubst %c, %o, $(patsubst %asm, %o, $(APPAPISRCS)))
 
 all: $(TARGET)
 
-$(TARGET): ipl10.bin haribote.sys $(APP)
-	mformat -f 1440 -C -B ipl10.bin -i haribote.img ::
-	mcopy haribote.sys -i haribote.img ::
-	mcopy ipl10.asm -i haribote.img ::
-	mcopy Makefile -i haribote.img ::
-	mcopy $(APP) -i haribote.img ::
+$(TARGET): haribote/ipl10.bin haribote/haribote.sys $(APP)
+	mformat -f 1440 -C -B haribote/ipl10.bin -i $@ ::
+	mcopy haribote/haribote.sys -i $@ ::
+	# mcopy haribote/ipl10.asm -i $@ ::
+	# mcopy Makefile -i $@ ::
+	mcopy $(APP) -i $@ ::
 
-haribote.sys: asmhead.bin bootpack.hrb
+haribote/haribote.sys: haribote/asmhead.bin haribote/bootpack.hrb
 	cat $^ > $@
 
-%.bin: %.asm
+haribote/%.bin: haribote/%.asm
 	nasm $< -o $@
 
-nasmfunc.o: nasmfunc.asm
-	nasm -g -f elf $< -o $@
+haribote/nasmfunc.o: haribote/nasmfunc.asm
+	nasm -f elf $< -o $@
 
-%.o: %.c
+haribote/%.o: haribote/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-bootpack.hrb: $(OBJS) nasmfunc.o har.ld
-	$(CC) $(CFLAGS) -T har.ld $(OBJS) nasmfunc.o -Wl,-Map=bootpack.map -o $@
+haribote/bootpack.hrb: $(OBJS) haribote/nasmfunc.o haribote/har.ld
+	$(CC) $(CFLAGS) -T haribote/har.ld $(OBJS) haribote/nasmfunc.o -o $@
 
-app/%.hrb: app/%.o app/a_nasm.o
+app/%.hrb: app/%.o app/apilib.a
 	$(CC) $(CFLAGS) -T app/apphar.ld $^ -o $@
 
 app/%.o: app/%.asm
-	nasm -felf -g $< -o $@
+	nasm -felf $^ -o $@
 
 app/%.o: app/%.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c $^ -o $@
 
-app/a_nasm.o: app/a_nasm.asm
-	nasm -felf -g $< -o $@
+app/apilib.a: $(APPAPIOBJS)
+	ar r $@ $^ 
+
+app/api/%.o: app/api/%.asm
+	nasm -felf $< -o $@
+
+app/api/%.o: app/api/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 run: $(TARGET)
 	qemu-system-i386 -fda $< -m 32 -enable-kvm
 
 clean:
-	rm -f *.img *.bin *.sys *.hrb *.o *.map app/*.hrb app/*.o
+	rm -f *.img haribote/*.bin haribote/*.sys haribote/*.hrb haribote/*.o haribote/*.map app/*.hrb app/*.o app/*.a app/api/*.o
