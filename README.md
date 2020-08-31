@@ -58,6 +58,10 @@ Ubuntu 18.04/20.04のQEMU上で動作することを確認している。
 - いつだったか忘れたがconsoleのウィンドウサイズを可変にできるようにしたら、`ncst`で`bxsize/bysize`が存在しなくなり動作しなかった
   - `sheet`が0のときは`bxsize/bysize`を使わないように改変
 
+## 28日目
+- `alloca`なしでも動作したので作成していない
+  - `apphar.ld`のスタックサイズを大きくしている(29日目)
+
 ## 29日目
 - 圧縮では[このブログ](http://bttb.s1.valueserver.jp/wordpress/blog/2018/04/10/makeos-29/)の補足を参考に
   - `longjmp`と`setjmp`に`__builtin_`をつける
