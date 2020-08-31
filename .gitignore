@@ -7,6 +7,8 @@
 !*.h
 !*.ld
 !hankaku.txt
+!*.fnt
 !haribote/
 !app/
 !app/api/
+!japanese/

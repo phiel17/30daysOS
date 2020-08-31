@@ -1,6 +1,8 @@
 #include "bootpack.h"
 
 void cons_newline(struct CONSOLE *cons) {
+	struct TASK *task = task_now();
+
 	if (cons->cur_y < cons->sheet->bysize - 8 - 32 || !cons->sheet) {
 		cons->cur_y += 16;
 	} else {
@@ -19,6 +21,9 @@ void cons_newline(struct CONSOLE *cons) {
 		}
 	}
 	cons->cur_x = 8;
+	if (task->langmode == 1 && task->langbyte1 != 0) {
+		cons->cur_x += 8;
+	}
 	return;
 }
 
@@ -112,21 +117,6 @@ void cons_cmd_ls(struct CONSOLE *cons) {
 	cons_newline(cons);
 }
 
-void cons_cmd_cat(struct CONSOLE *cons, int *fat, char *cmdline) {
-	struct MEMMAN* memman = (struct MEMMAN *) MEMMAN_ADDR;
-	struct FILEINFO *finfo = file_search(cmdline + 4, (struct FILEINFO *) (ADDR_DISKIMG + 0x002600), 224);
-
-	if (finfo){		// file exists
-		char *p = (char*) memman_alloc_4k(memman, finfo->size);
-		file_loadfile(finfo->clustno, finfo->size, p, fat, (char *) (ADDR_DISKIMG + 0x003e00));
-		cons_putstr1(cons, p, finfo->size);
-		memman_free_4k(memman, (int) p, finfo->size);
-	} else {
-		cons_putstr0(cons, "File not found.\n");
-	}
-	cons_newline(cons);
-}
-
 void cons_cmd_exit(struct CONSOLE* cons, int *fat) {
 	struct MEMMAN *memman = (struct MEMMAN *)MEMMAN_ADDR;
 	struct TASK *task = task_now();
@@ -201,8 +191,15 @@ int cons_cmd_app(struct CONSOLE *cons, int *fat, char *cmdline) {
 					sheet_free(sheet);
 				}
 			}
+			for (int i = 0; i < 8; i++) {
+				if (task->fhandle[i].buf) {
+					memman_free_4k(memman, (int)task->fhandle[i].buf, task->fhandle[i].size);
+					task->fhandle[i].buf = 0;
+				}
+			}
 			timer_cancelall(&task->fifo);
 			memman_free_4k(memman, (int)q, segsize);
+			task->langbyte1 = 0;
 		} else {
 			cons_putstr0(cons, ".hrb file format error.\n");
 		}
@@ -239,6 +236,18 @@ void cons_cmd_ncst(struct CONSOLE* cons, char *cmdline, int memtotal) {
 	return;
 }
 
+void cons_cmd_langmode(struct CONSOLE* cons, char *cmdline) {
+	struct TASK *task = task_now();
+	unsigned char mode = cmdline[0] - '0';
+	if (mode <= 2) {
+		task->langmode = mode;
+	} else {
+		cons_putstr0(cons, "mode error\n");
+	}
+	cons_newline(cons);
+	return;
+}
+
 void cons_runcmd(char *cmdline, struct CONSOLE *cons, int *fat, unsigned int memtotal) {
 	if (!strcmp(cmdline, "mem") && cons->sheet) {
 		cons_cmd_mem(cons, memtotal);
@@ -246,14 +255,14 @@ void cons_runcmd(char *cmdline, struct CONSOLE *cons, int *fat, unsigned int mem
 		cons_cmd_clear(cons);
 	} else if(!strcmp(cmdline, "ls") && cons->sheet) {
 		cons_cmd_ls(cons);
-	} else if(!strncmp(cmdline, "cat ", 5) && cons->sheet) {
-		cons_cmd_cat(cons, fat, cmdline);
 	} else if (!strcmp(cmdline, "exit")) {
 		cons_cmd_exit(cons, fat);
 	} else if (!strncmp(cmdline, "start ", 6)) {
 		cons_cmd_start(cons, cmdline + 6, memtotal);
 	} else if (!strncmp(cmdline, "ncst ", 5)) {
 		cons_cmd_ncst(cons, cmdline + 5, memtotal);
+	} else if (!strncmp(cmdline, "langmode ", 9)) {
+		cons_cmd_langmode(cons, cmdline + 9);
 	} else if (cmdline[0]) {
 		if (!cons_cmd_app(cons, fat, cmdline)) {
 			cons_putstr0(cons, "Bad command.\n\n");
@@ -266,6 +275,7 @@ void console_task(struct SHEET* sheet, unsigned int memtotal) {
 	struct TASK* task = task_now();
 	struct MEMMAN *memman = (struct MEMMAN *) MEMMAN_ADDR;
 	struct CONSOLE cons;
+	struct FILEHANDLE fhandle[8];
 
 	cons.sheet = sheet;
 	cons.cur_x = 8;
@@ -282,9 +292,25 @@ void console_task(struct SHEET* sheet, unsigned int memtotal) {
 	int *fat = (int *) memman_alloc_4k(memman, 4 * 2880);
 	file_readfat(fat, (unsigned char *) (ADDR_DISKIMG + 0x000200));
 
+	for (int i = 0; i < 8; i++) {
+		fhandle[i].buf = 0;
+	}
+	task->fhandle = fhandle;
+	task->fat = fat;
+
+	unsigned char *japanese = (char *)*((int *)0x0fe8);
+	if (japanese[4096] != 0xff) {	// if japanese font is available
+		task->langmode = 1;
+	} else {
+		task->langmode = 0;
+	}
+	task->langbyte1 = 0;
+
 	cons_putchar(&cons, '>', 1);
 
 	char cmdline[64];
+	task->cmdline = cmdline;
+
 	for (;;) {
 		io_cli();
 
@@ -523,6 +549,79 @@ int* hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int 
 			d = io_in8(0x61);
 			io_out8(0x61, (d | 0x03) & 0x0f);
 		}
+	} else if (edx == 21) {		// fopen
+		struct MEMMAN* memman = (struct MEMMAN *) MEMMAN_ADDR;
+		int index;
+		for (index = 0; index < 8; index++) {
+			if (!task->fhandle[index].buf) {
+				break;
+			}
+		}
+		struct FILEHANDLE *fh = &task->fhandle[index];
+		reg[7] = 0;
+		if (index < 8) {
+			struct FILEINFO *finfo = file_search((char *) ebx + ds_base, (struct FILEINFO *) (ADDR_DISKIMG + 0x002600), 224);
+			if (finfo != 0) {
+				reg[7] = (int)fh;
+				fh->buf = (char *)memman_alloc_4k(memman, finfo->size);
+				fh->size = finfo->size;
+				fh->pos = 0;
+				file_loadfile(finfo->clustno, finfo->size, fh->buf, task->fat, (char *)(ADDR_DISKIMG + 0x003e00));
+			}
+		}
+	} else if (edx == 22) {		// fclose
+		struct MEMMAN* memman = (struct MEMMAN *) MEMMAN_ADDR;
+		struct FILEHANDLE *fh = (struct FILEHANDLE *) eax;
+		memman_free_4k(memman, (int) fh->buf, fh->size);
+		fh->buf = 0;
+	} else if (edx == 23) {		// fseek
+		struct FILEHANDLE *fh = (struct FILEHANDLE *) eax;
+		if (ecx == 0) {
+			fh->pos = ebx;
+		} else if (ecx == 1) {
+			fh->pos += ebx;
+		} else if (ecx == 2) {
+			fh->pos = fh->size + ebx;
+		}
+
+		if (fh->pos < 0) {
+			fh->pos = 0;
+		}
+		if (fh->pos > fh->size) {
+			fh->pos = fh->size;
+		}
+	} else if (edx == 24) {		// fsize
+		struct FILEHANDLE *fh = (struct FILEHANDLE *) eax;
+		if (ecx == 0) {
+			reg[7] = fh->size;
+		} else if (ecx == 1) {
+			reg[7] = fh->pos;
+		} else if (ecx == 2) {
+			reg[7] == fh->pos - fh->size;
+		}
+	} else if (edx == 25) {		// fread
+		struct FILEHANDLE *fh = (struct FILEHANDLE *) eax;
+		int index;
+		for (index = 0; index < ecx; index++) {
+			if (fh->pos == fh->size) {
+				break;
+			}
+			*((char *)ebx + ds_base + index) = fh->buf[fh->pos];
+			fh->pos++;
+		}
+		reg[7] = index;
+	} else if (edx == 26) {		// cmdline
+		int index = 0;
+		for (;;) {
+			*((char *) ebx + ds_base + index) = task->cmdline[index];
+			if (task->cmdline[index] == 0 || index >= ecx) {
+				break;
+			}
+			index++;
+		}
+		reg[7] = index;
+	} else if (edx == 27) {
+		reg[7] = task->langmode;
 	}
 	return 0;
 }

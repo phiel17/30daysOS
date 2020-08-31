@@ -23,3 +23,13 @@ void api_timerset(int timer, int time);
 void api_timerfree(int timer);
 
 void api_beep(int tone);
+
+int api_fopen(char *fname);
+void api_fclose(int fhandle);
+void api_fseek(int fhandle, int offset, int mode);
+int api_fsize(int fhandle, int mode);
+int api_fread(char *buf, int maxsize, int fhandle);
+
+int api_cmdline(char *cmdline, int maxsize);
+
+int api_getlang();

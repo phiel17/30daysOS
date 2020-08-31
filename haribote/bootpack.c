@@ -137,6 +137,7 @@ void HariMain(void){
 	*((int*) 0x0fe4) = (int) sheetctl;
 
 	task_a = task_init(memman);
+	task_a->langmode = 0;
 	fifo.task = task_a;
 	task_run(task_a, 1, 2);
 
@@ -164,6 +165,24 @@ void HariMain(void){
 	int mmx = -1, mmy = -1, new_mx = -1, mmx2 = 0, new_my = 0, new_wx = 0x7fffffff, new_wy = 0;
 	struct SHEET *sheet = 0;
 	keywin_on(key_win);
+
+	extern char hankaku[4096];
+	unsigned char *japanese = (unsigned char *)memman_alloc_4k(memman, 16 * 256 + 32 * 94 * 47);
+	int *fat = (int *)memman_alloc_4k(memman, 4 * 2880);
+	file_readfat(fat, (unsigned char *)(ADDR_DISKIMG + 0x000200));
+	struct FILEINFO *finfo = file_search("japanese.fnt", (struct FILEINFO *)(ADDR_DISKIMG + 0x002600), 224);
+	if (finfo) {
+		file_loadfile(finfo->clustno, finfo->size, japanese, fat, (char *)(ADDR_DISKIMG + 0x003e00));
+	} else {
+		for (int i = 0; i < 16 * 256; i++) {
+			japanese[i] = hankaku[i];
+		}
+		for (int i = 16 * 256; i < 16 * 256 + 32 * 94 * 47; i++) {
+			japanese[i] = 0xff;
+		}
+	}
+	*((int *)0x0fe8) = (int)japanese;
+	memman_free_4k(memman, (int)fat, 4 * 2880);
 
 	for (;;) {
 		if (fifo32_status(&keycmd) > 0 && keycmd_wait < 0) {
