@@ -167,13 +167,15 @@ void HariMain(void){
 	keywin_on(key_win);
 
 	extern char hankaku[4096];
-	unsigned char *japanese = (unsigned char *)memman_alloc_4k(memman, 16 * 256 + 32 * 94 * 47);
+	unsigned char *japanese;
 	int *fat = (int *)memman_alloc_4k(memman, 4 * 2880);
 	file_readfat(fat, (unsigned char *)(ADDR_DISKIMG + 0x000200));
 	struct FILEINFO *finfo = file_search("japanese.fnt", (struct FILEINFO *)(ADDR_DISKIMG + 0x002600), 224);
 	if (finfo) {
-		file_loadfile(finfo->clustno, finfo->size, japanese, fat, (char *)(ADDR_DISKIMG + 0x003e00));
+		int size = finfo->size;
+		japanese = file_loadfile2(finfo->clustno, &size, fat);
 	} else {
+		japanese = (unsigned char *)memman_alloc_4k(memman, 16 * 256 + 32 * 94 * 47);
 		for (int i = 0; i < 16 * 256; i++) {
 			japanese[i] = hankaku[i];
 		}

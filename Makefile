@@ -18,8 +18,6 @@ $(TARGET): haribote/ipl20.bin haribote/haribote.sys japanese/japanese.fnt $(APP)
 	mformat -f 1440 -C -B haribote/ipl20.bin -i $@ ::
 	mcopy haribote/haribote.sys -i $@ ::
 	mcopy $(APP) -i $@ ::
-	mcopy japanese/shiftjis.txt -i $@ ::
-	mcopy japanese/euc.txt -i $@ ::
 	mcopy japanese/japanese.fnt -i $@ ::
 
 haribote/haribote.sys: haribote/asmhead.bin haribote/bootpack.hrb

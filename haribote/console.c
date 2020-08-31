@@ -165,9 +165,9 @@ int cons_cmd_app(struct CONSOLE *cons, int *fat, char *cmdline) {
 	}
 
 	if (finfo) {
-		char *p = (char*) memman_alloc_4k(memman, finfo->size);
-		file_loadfile(finfo->clustno, finfo->size, p, fat, (char *) (ADDR_DISKIMG + 0x003e00));
-		if (finfo->size >= 36 && !strncmp(p + 4, "Hari", 4) && *p == 0x00) {
+		int appsize = finfo->size;
+		char *p = file_loadfile2(finfo->clustno, &appsize, fat);
+		if (appsize >= 36 && !strncmp(p + 4, "Hari", 4) && *p == 0x00) {
 			int segsize = *((int *) (p + 0x0000));
 			int esp = *((int *) (p + 0x000c));
 			int datsize = *((int *) (p + 0x0010));
@@ -204,7 +204,7 @@ int cons_cmd_app(struct CONSOLE *cons, int *fat, char *cmdline) {
 			cons_putstr0(cons, ".hrb file format error.\n");
 		}
 
-		memman_free_4k(memman, (int)p, finfo->size);
+		memman_free_4k(memman, (int)p, appsize);
 		cons_newline(cons);
 		return 1;
 	}
@@ -488,6 +488,16 @@ int* hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int 
 		struct SHEET *sheet = (struct SHEET *) (ebx & 0xfffffffe);
 		hrb_api_linewin(sheet, eax, ecx, esi, edi, ebp);
 		if (!(ebx & 1)) {
+			if (eax > esi) {
+				int temp = eax;
+				eax = esi;
+				esi = temp;
+			}
+			if (ecx > edi) {
+				int temp = ecx;
+				ecx = edi;
+				edi = temp;
+			}
 			sheet_refresh(sheet, eax, ecx, esi + 1, edi + 1);
 		}
 	} else if (edx == 14) {
@@ -566,7 +576,7 @@ int* hrb_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int 
 				fh->buf = (char *)memman_alloc_4k(memman, finfo->size);
 				fh->size = finfo->size;
 				fh->pos = 0;
-				file_loadfile(finfo->clustno, finfo->size, fh->buf, task->fat, (char *)(ADDR_DISKIMG + 0x003e00));
+				fh->buf = file_loadfile2(finfo->clustno, &finfo->size, task->fat);
 			}
 		}
 	} else if (edx == 22) {		// fclose

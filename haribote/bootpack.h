@@ -281,7 +281,12 @@ struct FILEINFO {
 };
 void file_readfat(int *fat, unsigned char *img);
 void file_loadfile(int clustno, int size, char *buf, int *fat, char *img);
+char *file_loadfile2(int clustno, int *psize, int *fat);
 struct FILEINFO *file_search(char *name, struct FILEINFO *finfo, int max);
+
+// tek.c
+int tek_getsize(unsigned char *p);
+int tek_decomp(unsigned char *p, char *q, int size);
 
 // bootpack.c
 struct SHEET *open_console(struct SHEETCTL *sheetctl, unsigned int memtotal);
@@ -291,3 +296,4 @@ struct TASK *open_cons_task(struct SHEET *sheet, unsigned int memtotal);
 void sprintf(char *str, char *fmt, ...);
 int strcmp(const char *s1, const char *s2);
 int strncmp(const char *s1, const char *s2, int n);
+int memcmp(void *s1, void *s2, int n);
