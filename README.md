@@ -66,3 +66,6 @@ Ubuntu 18.04/20.04のQEMU上で動作することを確認している。
 - 圧縮では[このブログ](http://bttb.s1.valueserver.jp/wordpress/blog/2018/04/10/makeos-29/)の補足を参考に
   - `longjmp`と`setjmp`に`__builtin_`をつける
   - `memcmp`は自分で実装し、`string.h`はインクルードしないようにした
+
+## 30日目
+- `strtol`が使えないなど面倒なので省略した
